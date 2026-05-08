@@ -244,6 +244,7 @@ class SignalValidator:
                     end=latest.isoformat(),
                     progress=False,
                     auto_adjust=True,
+                    threads=True,
                 )
                 if hist is None or hist.empty:
                     return results

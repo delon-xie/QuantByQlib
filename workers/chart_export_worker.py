@@ -121,8 +121,11 @@ class ChartExportWorker(QRunnable):
 
                         if df is None or df.empty:
                             df = yf.download(
-                                ticker, progress=False, auto_adjust=True,
-                                period=params["period"], interval=params["interval"],
+                                ticker, progress=False, 
+                                auto_adjust=True,
+                                period=params["period"], 
+                                interval=params["interval"],
+                                threads=True,
                             )
                             if df is not None and not df.empty:
                                 if hasattr(df.columns, "levels"):

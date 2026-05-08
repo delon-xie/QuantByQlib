@@ -138,8 +138,12 @@ def _fetch_spy_data(anchor: date, lookback_years: int) -> Optional[pd.DataFrame]
     try:
         import yfinance as yf
         raw = yf.download(
-            "SPY", start=start.isoformat(), end=anchor.isoformat(),
-            progress=False, auto_adjust=True,
+            "SPY", 
+            start=start.isoformat(), 
+            end=anchor.isoformat(),
+            progress=False, 
+            auto_adjust=True,
+            threads=True,
         )
         if raw is not None and not raw.empty:
             if hasattr(raw.columns, "levels"):

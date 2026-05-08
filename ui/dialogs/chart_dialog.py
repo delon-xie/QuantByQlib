@@ -63,7 +63,13 @@ class _FetchWorker(QRunnable):
         """Fallback：yfinance 公共数据"""
         import yfinance as yf
         params = self._YF_PARAMS[self.period_key]
-        df = yf.download(self.ticker, progress=False, auto_adjust=True, **params)
+        df = yf.download(
+            self.ticker, 
+            progress=False, 
+            auto_adjust=True, 
+            threads=True, 
+            **params
+        )
         if df is not None and not df.empty:
             if hasattr(df.columns, "levels"):
                 df.columns = df.columns.get_level_values(0)

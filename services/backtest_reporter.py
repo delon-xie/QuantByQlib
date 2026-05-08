@@ -248,8 +248,14 @@ def _get_benchmark_metrics(ticker: str, start_date: str, end_date: str) -> dict:
     try:
         import yfinance as yf
         import numpy as np
-        raw = yf.download(ticker, start=start_date, end=end_date,
-                          progress=False, auto_adjust=True)
+        raw = yf.download(
+            ticker, 
+            start=start_date, 
+            end=end_date,
+            progress=False, 
+            auto_adjust=True, 
+            threads=True,
+        )
         if raw is None or raw.empty:
             return {"name": ticker, "recent_30d_return": None, "annual_return": None}
         if hasattr(raw.columns, "levels"):

@@ -433,6 +433,7 @@ class BacktestEngine:
                 end=end,
                 progress=False,
                 auto_adjust=True,
+                threads=True,
             )
             if df_all is None or df_all.empty:
                 raise ValueError("yfinance 批量下载返回空数据")
@@ -502,8 +503,14 @@ class BacktestEngine:
         # 1. yfinance 直接获取（最可靠，无需 API Key）
         try:
             import yfinance as yf
-            df = yf.download(ticker, start=start, end=end,
-                             progress=False, auto_adjust=True)
+            df = yf.download(
+                ticker, 
+                start=start, 
+                end=end,
+                progress=False, 
+                auto_adjust=True, 
+                threads=True,
+            )
             if df is not None and not df.empty:
                 # yfinance >= 0.2 返回 MultiIndex 列时处理
                 if hasattr(df.columns, "levels"):

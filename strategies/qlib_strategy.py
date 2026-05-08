@@ -259,6 +259,7 @@ def _yfinance_score_universe(
                 progress=False,
                 auto_adjust=True,
                 group_by="ticker",
+                threads=True,
             )
             if df_all is None or df_all.empty:
                 continue

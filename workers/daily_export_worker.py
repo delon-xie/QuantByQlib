@@ -291,8 +291,11 @@ class DailyExportWorker(QRunnable):
 
                         if df is None or df.empty:
                             df = yf.download(
-                                ticker, progress=False, auto_adjust=True,
-                                period=params["period"], interval=params["interval"],
+                                ticker, progress=False, 
+                                auto_adjust=True,
+                                period=params["period"], 
+                                interval=params["interval"],
+                                threads=True,
                             )
                             if df is not None and not df.empty:
                                 if hasattr(df.columns, "levels"):
@@ -433,8 +436,11 @@ class DailyExportWorker(QRunnable):
 
                 if df is None or df.empty:
                     raw = yf.download(
-                        ticker, period="252d", interval="1d",
-                        progress=False, auto_adjust=True,
+                        ticker, period="252d", 
+                        interval="1d",
+                        progress=False, 
+                        auto_adjust=True,
+                        threads=True,
                     )
                     if raw is not None and not raw.empty:
                         if hasattr(raw.columns, "levels"):
