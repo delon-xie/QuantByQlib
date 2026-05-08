@@ -13,13 +13,13 @@ import math
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
+from core.qlibhelper import _find_data_dir
 
 import numpy as np
 import pandas as pd
-from PyQt6.QtCore import QObject, QRunnable, pyqtSignal, pyqtSlot
-from loguru import logger
-
-
+from PyQt6.QtCore import QObject, QRunnable, pyqtSignal, pyqtSlot, QTimer
+from PyQt6.QtCore import QEventLoop
+import yfinance as yf
 def _find_us_data_dir() -> Path:
     """自动探测美股 Qlib 数据目录（与 qlib_manager 保持一致）"""
     candidates = [
@@ -38,7 +38,7 @@ def _find_us_data_dir() -> Path:
     return candidates[0]
 
 
-QLIB_DATA_DIR = _find_us_data_dir()
+QLIB_DATA_DIR = _find_data_dir()
 # yfinance 下载每批的股票数量（过大会超时）
 BATCH_SIZE = 50
 # 获取交易日历用的参考指数
@@ -69,7 +69,6 @@ class YFinanceCollectorWorker(QRunnable):
         self.start_date = start_date
         self.signals = CollectorSignals()
         self._cancelled = False
-        self.setAutoDelete(True)
 
     def cancel(self) -> None:
         self._cancelled = True
@@ -78,16 +77,18 @@ class YFinanceCollectorWorker(QRunnable):
     def run(self) -> None:
         try:
             self._run_collect()
+            self.signals.log_line.emit("采集完成")
         except Exception as e:
-            logger.exception(f"yfinance 采集 Worker 异常：{e}")
+            self.signals.log_line.emit(f"yfinance 采集 Worker 异常：{e}")
             self.signals.error.emit(str(e))
-            self.signals.completed.emit(False, str(e))
+        finally:
+            # ✅ 延迟删除，确保信号已派发
+            #QTimer.singleShot(0, self.deleteLater)
+            pass
 
     # ── 主流程 ──────────────────────────────────────────────
 
     def _run_collect(self) -> None:
-        import yfinance as yf
-
         self._log("[INFO] === yfinance 数据采集开始 ===")
         self._progress(2, "准备中...")
 
@@ -151,7 +152,6 @@ class YFinanceCollectorWorker(QRunnable):
                 failed_tickers.extend(batch_failed)
             except Exception as e:
                 self._log(f"[WARN] 批次 {batch_idx+1} 异常：{e}")
-                logger.warning(f"批次 {batch_idx+1} 异常：{e}")
 
         if self._cancelled:
             return self._cancel_exit()
@@ -205,25 +205,30 @@ class YFinanceCollectorWorker(QRunnable):
 
     def _fetch_trading_days(self, start: date, end: date) -> list[date]:
         """通过下载参考指数获取美股交易日列表"""
-        import yfinance as yf
         if start > end:
             return []
         try:
+            # 保持 threads 设置 和 _process_batch 中 download 一致
+            # 否则容易造成崩溃
             df = yf.download(
                 CALENDAR_REF_TICKER,
-                start=start.strftime("%Y-%m-%d"),
-                end=(end + timedelta(days=1)).strftime("%Y-%m-%d"),
+                start=f"{start}", #.strftime("%Y-%m-%d"),
+                end=f"{end}", #.strftime("%Y-%m-%d"),
                 auto_adjust=False,
                 progress=False,
-                threads=False,
+                threads=True,
             )
             if df.empty:
+                self.signals.log_line.emit("获取空日历数据")
                 return []
+            
             trading_days = sorted([ts.date() for ts in df.index])
+            self.signals.log_line.emit(f"获取日历天数:{len(trading_days)}")
             return trading_days
         except Exception as e:
-            logger.warning(f"获取交易日历失败：{e}")
-            return []
+            self.signals.log_line.emit(f"获取交易日历失败：{e}")
+            
+        return []
 
     def _extend_calendar(self, new_dates: list[date]) -> None:
         """将新交易日追加到 calendars/day.txt（自动去重）"""
@@ -232,12 +237,12 @@ class YFinanceCollectorWorker(QRunnable):
             return
         # 读取已有日期集合，避免写入重复行
         existing = set(cal_file.read_text().strip().split("\n"))
-        to_write = [d for d in new_dates if d.strftime("%Y-%m-%d") not in existing]
+        to_write = [d for d in new_dates if f'{d}' not in existing]
         if not to_write:
             return
         with cal_file.open("a", encoding="utf-8") as f:
             for d in to_write:
-                f.write(f"\n{d.strftime('%Y-%m-%d')}")
+                f.write(f"\n{d}") #.strftime('%Y-%m-%d')
 
     # ── 股票列表 ─────────────────────────────────────────────
 
@@ -289,7 +294,7 @@ class YFinanceCollectorWorker(QRunnable):
         # 对于追加模式：只需要 new_dates 对应的数据
         # 对于全新 ticker：需要从 start_date 开始
         dl_start = self.start_date
-        dl_end = (date.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+        dl_end = f'{date.today()}' #.strftime("%Y-%m-%d")
 
         try:
             raw = yf.download(
@@ -302,7 +307,7 @@ class YFinanceCollectorWorker(QRunnable):
                 threads=True,
             )
         except Exception as e:
-            logger.warning(f"批量下载失败：{e}")
+            self.signals.log_line.emit(f"批量下载失败：{e}")
             return 0, tickers
 
         written = 0
@@ -369,11 +374,11 @@ class YFinanceCollectorWorker(QRunnable):
                     else:
                         failed.append(ticker)
             except Exception as e:
-                logger.debug(f"{ticker} 写入失败：{e}")
+                self.signals.log_line.emit(f"{ticker} 写入失败：{e}")
                 failed.append(ticker)
 
         if skipped_delisted:
-            logger.debug(f"已退市/停牌跳过（有历史数据）：{skipped_delisted} 支")
+            self.signals.log_line.emit(f"已退市/停牌跳过（有历史数据）：{skipped_delisted} 支")
         return written, failed
 
     def _write_ticker_data(
@@ -521,7 +526,7 @@ class YFinanceCollectorWorker(QRunnable):
 
     def _update_instruments(self, tickers: list[str], end_date: date) -> None:
         """更新 instruments 文件的末尾日期（all.txt 和 scope 文件）"""
-        end_str = end_date.strftime("%Y-%m-%d")
+        end_str = f'{end_date}' #.strftime("%Y-%m-%d")
         files_to_update = [
             QLIB_DATA_DIR / "instruments" / "all.txt",
             QLIB_DATA_DIR / "instruments" / f"{self.scope}.txt",
@@ -543,12 +548,12 @@ class YFinanceCollectorWorker(QRunnable):
                         new_lines.append(line)
                 inst_file.write_text("\n".join(new_lines), encoding="utf-8")
             except Exception as e:
-                logger.debug(f"更新 {inst_file.name} 失败：{e}")
+                self.signals.log_line.emit(f"更新 {inst_file.name} 失败：{e}")
 
     # ── 辅助 ─────────────────────────────────────────────────
 
     def _log(self, msg: str) -> None:
-        logger.debug(msg)
+
         self.signals.log_line.emit(msg)
 
     def _progress(self, pct: int, msg: str) -> None:

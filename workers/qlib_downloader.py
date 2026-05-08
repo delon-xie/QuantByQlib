@@ -51,7 +51,7 @@ class QlibDownloadWorker(QRunnable):
         try:
             self._run_download()
         except Exception as e:
-            logger.exception(f"下载 Worker 异常：{e}")
+            #logger.exception(f"下载 Worker 异常：{e}")
             self.signals.error.emit(str(e))
             self.signals.completed.emit(False, str(e))
 
@@ -360,7 +360,7 @@ class QlibUpdateWorker(QRunnable):
         try:
             self._run_update()
         except Exception as e:
-            logger.exception(f"更新 Worker 异常：{e}")
+            #logger.exception(f"更新 Worker 异常：{e}")
             self.signals.error.emit(str(e))
             self.signals.completed.emit(False, str(e))
 

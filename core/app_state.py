@@ -16,6 +16,8 @@ class AppState:
     qlib_initialized: bool = False
     qlib_data_path: str = ""
     qlib_last_update: Optional[str] = None   # ISO 日期字符串
+    reg:str = "us"
+    reg_name:str = "美股"
 
     # ── OpenBB API Key 状态 ─────────────────────────────────
     fmp_key_configured: bool = False

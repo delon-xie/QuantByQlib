@@ -12,34 +12,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 from loguru import logger
-
-
-def _find_us_data_dir() -> Path:
-    """
-    自动探测美股 Qlib 数据目录。
-    优先顺序：
-      1. ~/.qlib/qlib_data/              （SunsetWolf 原始下载位置）
-      2. ~/.qlib/qlib_data/us_data/      （旧配置路径）
-    判断依据：features/ 下有纯字母子目录（如 aapl）且不含 sh/sz/bj 前缀
-    """
-    candidates = [
-        Path.home() / ".qlib" / "qlib_data",
-        Path.home() / ".qlib" / "qlib_data" / "us_data",
-    ]
-    for path in candidates:
-        features = path / "features"
-        if not features.exists():
-            continue
-        for d in features.iterdir():
-            if (d.is_dir()
-                    and d.name.replace("-", "").replace(".", "").isalpha()
-                    and not any(d.name.lower().startswith(p) for p in ("sh", "sz", "bj"))):
-                return path
-    # 默认返回根目录（即使暂时为空）
-    return candidates[0]
-
-
-QLIB_DATA_DIR = _find_us_data_dir()
+from core.qlibhelper import _find_data_dir
+QLIB_DATA_DIR = _find_data_dir()
 
 
 def is_initialized() -> bool:
@@ -57,14 +31,16 @@ def init_qlib(provider_uri: Optional[str] = None) -> bool:
     初始化 Qlib（仅当数据已存在时）
     成功返回 True，否则 False；同时更新 AppState.qlib_initialized
     """
+    QLIB_DATA_DIR = _find_data_dir()
     uri = provider_uri or str(QLIB_DATA_DIR)
     try:
         import qlib
         from qlib.constant import REG_US
         qlib.init(provider_uri=uri, region=REG_US)
-        logger.info(f"Qlib 初始化成功：{uri}")
+        #logger.info(f"Qlib 初始化成功：{uri}")
     except Exception as e:
         msg = str(e)
+        logger.error(f"Qlib 初始化失败：{e}")
         # Qlib 已经初始化过（QlibRecorder 激活状态下不允许重复 init），视为成功
         if "reinitialize" in msg or "QlibRecorder" in msg:
             logger.info(f"Qlib 已初始化，跳过重复 init（{uri}）")
@@ -74,8 +50,10 @@ def init_qlib(provider_uri: Optional[str] = None) -> bool:
     try:
         from core.app_state import get_state
         get_state().qlib_initialized = True
-    except Exception:
+    except Exception as ex:
+        logger.error(f"Qlib 初始化失败：{e}")
         pass
+    #logger.info(f"Qlib 初始化成功：{uri}")
     return True
 
 

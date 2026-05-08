@@ -378,8 +378,8 @@ class ConfigPage(QWidget):
                 if val:
                     inp.setText(val)
         except Exception as e:
-            from loguru import logger
-            logger.debug(f"加载 .env 失败：{e}")
+            #logger.debug(f"加载 .env 失败：{e}")
+            pass
 
     def _refresh_qlib_status(self) -> None:
         """检测并刷新 Qlib 数据状态"""
@@ -541,11 +541,16 @@ class ConfigPage(QWidget):
         self._append_log(f"[INFO] 开始下载美股 Qlib 数据集（SunsetWolf/qlib_dataset）...")
 
         from workers.qlib_downloader import QlibDownloadWorker
-        self._download_worker = QlibDownloadWorker(scope=scope)
-        self._download_worker.signals.progress.connect(self._on_download_progress)
-        self._download_worker.signals.log_line.connect(self._append_log)
-        self._download_worker.signals.completed.connect(self._on_download_completed)
-        self._download_worker.signals.error.connect(self._on_download_error)
+        worker = QlibDownloadWorker(scope=scope)
+
+        worker.signals.progress.connect(self._on_download_progress)
+        worker.signals.log_line.connect(self._append_log)
+        worker.signals.completed.connect(self._on_download_completed)
+        worker.signals.error.connect(self._on_download_error)
+
+        if(self._download_worker):
+            self._download_worker = None
+        self._download_worker = worker
         QThreadPool.globalInstance().start(self._download_worker)
 
     def _on_update(self) -> None:
@@ -644,12 +649,17 @@ class ConfigPage(QWidget):
         self._collect_log.append(f"[INFO] 开始采集 {scope_name} 数据（yfinance）...")
 
         from workers.yfinance_collector import YFinanceCollectorWorker
-        self._collect_worker = YFinanceCollectorWorker(scope=scope)
-        self._collect_worker.signals.progress.connect(self._on_collect_progress)
-        self._collect_worker.signals.log_line.connect(self._append_collect_log)
-        self._collect_worker.signals.completed.connect(self._on_collect_completed)
-        self._collect_worker.signals.error.connect(self._on_collect_error)
-        QThreadPool.globalInstance().start(self._collect_worker)
+        worker = YFinanceCollectorWorker(scope=scope)
+        worker.signals.progress.connect(self._on_collect_progress)
+        worker.signals.log_line.connect(self._append_collect_log)
+        worker.signals.completed.connect(self._on_collect_completed)
+        worker.signals.error.connect(self._on_collect_error)
+
+        if(self._collect_worker):
+            self._collect_worker = None
+        self._collect_worker = worker
+    
+        QThreadPool.globalInstance().start(worker)
 
     def _on_cancel_collect(self) -> None:
         if self._collect_worker:

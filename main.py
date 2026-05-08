@@ -5,6 +5,8 @@ QuantByQlib 应用入口
 import sys
 import os
 from pathlib import Path
+from core.qlibhelper import _check_qlib_init
+import sys
 
 # ── 确保项目根目录在 Python 路径中 ──────────────────────────
 ROOT = Path(__file__).parent
@@ -85,29 +87,10 @@ def main() -> int:
 
     return app.exec()
 
-
-def _check_qlib_init(bus) -> None:
-    """检测 Qlib 数据是否已初始化，并更新全局状态"""
-    from core.app_state import get_state
-    state = get_state()
-
-    qlib_data = Path.home() / ".qlib" / "qlib_data" / "us_data"
-    if qlib_data.exists() and any(qlib_data.iterdir()):
-        try:
-            import qlib
-            from qlib.constant import REG_US
-            qlib.init(provider_uri=str(qlib_data), region=REG_US)
-            state.qlib_initialized = True
-            state.qlib_data_path = str(qlib_data)
-            logger.info(f"Qlib 初始化成功：{qlib_data}")
-            bus.qlib_initialized.emit()
-        except Exception as e:
-            logger.warning(f"Qlib 初始化失败：{e}")
-            state.qlib_initialized = False
-    else:
-        logger.info("Qlib 数据未找到，请前往「参数配置」下载数据")
-        state.qlib_initialized = False
-
-
 if __name__ == "__main__":
+    import faulthandler
+
+    # --Qt异常捕捉 ─────────────────────────────────────────────
+    faulthandler.enable()
+    faulthandler.enable(file=open("crash.log", "a"), all_threads=True)
     sys.exit(main())

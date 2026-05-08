@@ -16,6 +16,10 @@ build/
 venv/
 env/
 .env
+*.del
+
+# binance data downloaders
+binance_data/
 
 # IDE
 .vscode/
