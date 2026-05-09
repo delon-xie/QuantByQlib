@@ -54,11 +54,11 @@
 美股交易日记/pics/{TICKER}_{type}_{YYYYMMDD}.png
 ```
 
-| type | 内容 | K线数量 | 均线 |
-|------|------|---------|------|
-| `week` | 周线图 | 60周 | MA5/MA10/MA20/MA30 |
-| `day` | 日线图 | 90日 | MA5/MA10/MA20/MA30 |
-| `zoom` | 近期放大日线图 | 最近20根日线 | MA5/MA10/MA20 |
+| type   | 内容      | K线数量    | 均线                 |
+| ------ | ------- | ------- | ------------------ |
+| `week` | 周线图     | 60周     | MA5/MA10/MA20/MA30 |
+| `day`  | 日线图     | 90日     | MA5/MA10/MA20/MA30 |
+| `zoom` | 近期放大日线图 | 最近20根日线 | MA5/MA10/MA20      |
 
 **颜色规范**（须严格遵守）：
 - MA5 = 琥珀色（`#FFA500` / amber/orange）
@@ -127,16 +127,16 @@ VLO,-0.203,SELL,480,moderate,500,strategy1,2026-03-18
 
 **字段说明**：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| symbol | string | 股票代码（大写） |
-| score | float | 模型预测分数（-1.0 到 1.0） |
-| direction | enum | BUY / NEUTRAL / SELL |
-| rank | int | 全股票池排名（1=最强） |
-| signal_strength | enum | strong / moderate / weak |
-| universe_size | int | 本次评分的总股票数量 |
-| strategy_id | string | strategy1 / strategy2 / strategy3 |
-| date | date | 信号日期（YYYY-MM-DD） |
+| 字段              | 类型     | 说明                                |
+| --------------- | ------ | --------------------------------- |
+| symbol          | string | 股票代码（大写）                          |
+| score           | float  | 模型预测分数（-1.0 到 1.0）                |
+| direction       | enum   | BUY / NEUTRAL / SELL              |
+| rank            | int    | 全股票池排名（1=最强）                      |
+| signal_strength | enum   | strong / moderate / weak          |
+| universe_size   | int    | 本次评分的总股票数量                        |
+| strategy_id     | string | strategy1 / strategy2 / strategy3 |
+| date            | date   | 信号日期（YYYY-MM-DD）                  |
 
 **Direction 阈值建议**：
 - score > 0.5 → BUY + strong
@@ -353,13 +353,13 @@ VLO,-0.203,SELL,480,moderate,500,strategy1,2026-03-18
 
 ## 五、运行频率与触发规则
 
-| 功能 | 触发时机 | 频率 |
-|------|---------|------|
-| F1 图表生成 | 交易日收盘后（约 16:30 ET） | 每交易日 |
-| F2 信号导出 | 与图表同步 | 每交易日 |
-| F3 HMM政体 | 每周日盘后（17:00 ET） | 每周 |
-| F4 回测绩效 | 每月最后一个交易日 | 每月 |
-| F5 Manifest | 每次运行后自动生成 | 每次运行 |
+| 功能          | 触发时机               | 频率   |
+| ----------- | ------------------ | ---- |
+| F1 图表生成     | 交易日收盘后（约 16:30 ET） | 每交易日 |
+| F2 信号导出     | 与图表同步              | 每交易日 |
+| F3 HMM政体    | 每周日盘后（17:00 ET）    | 每周   |
+| F4 回测绩效     | 每月最后一个交易日          | 每月   |
+| F5 Manifest | 每次运行后自动生成          | 每次运行 |
 
 ---
 

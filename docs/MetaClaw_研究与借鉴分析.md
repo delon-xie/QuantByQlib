@@ -45,13 +45,13 @@ MetaClaw 是一个**透明代理层（Transparent Proxy）**，架设在用户/A
 
 五个关键子系统：
 
-| 子系统 | 文件 | 职责 |
-|--------|------|------|
-| Skill Manager | `skill_manager.py` | 任务类型识别 + Skill 检索注入 |
-| Skill Evolver | `skill_evolver.py` | 失败驱动的 Skill 自动生成 |
-| Memory Manager | `memory/manager.py` | 六类记忆存储、检索、自升级 |
-| PRM Scorer | `prm_scorer.py` | 响应质量打分（多数投票）|
-| Scheduler | `scheduler.py` | 空闲窗口调度 RL 训练 |
+| 子系统            | 文件                  | 职责                  |
+| -------------- | ------------------- | ------------------- |
+| Skill Manager  | `skill_manager.py`  | 任务类型识别 + Skill 检索注入 |
+| Skill Evolver  | `skill_evolver.py`  | 失败驱动的 Skill 自动生成    |
+| Memory Manager | `memory/manager.py` | 六类记忆存储、检索、自升级       |
+| PRM Scorer     | `prm_scorer.py`     | 响应质量打分（多数投票）        |
+| Scheduler      | `scheduler.py`      | 空闲窗口调度 RL 训练        |
 
 ---
 
@@ -82,25 +82,25 @@ Agent 在执行相关任务时自动加载对应 Skill，主 `CLAUDE.md` 保持 
 
 **MetaClaw 的六类记忆类型**：
 
-| 类型 | 含义 |
-|------|------|
-| `episodic` | 情节性事件（某次操作的来龙去脉）|
-| `semantic` | 语义性事实（领域知识、规律）|
-| `preference` | 用户偏好 |
-| `project_state` | 项目当前状态 |
-| `working_summary` | 工作摘要（注入权重最高 ×1.2）|
-| `procedural_observation` | 程序性观察（"这样做会报错"）|
+| 类型                       | 含义                |
+| ------------------------ | ----------------- |
+| `episodic`               | 情节性事件（某次操作的来龙去脉）  |
+| `semantic`               | 语义性事实（领域知识、规律）    |
+| `preference`             | 用户偏好              |
+| `project_state`          | 项目当前状态            |
+| `working_summary`        | 工作摘要（注入权重最高 ×1.2） |
+| `procedural_observation` | 程序性观察（"这样做会报错"）   |
 
 **对应 QuantByQlib 的记忆体系**（当前已有 `user/feedback/project/reference` 四类）：
 
-| MetaClaw 类型 | QuantByQlib 对应 | 示例 |
-|--------------|-----------------|------|
-| `episodic` | `project` | "2026-03-29 修复了 FMP 百分比格式 bug" |
-| `semantic` | `reference` | "Alpha158 因子 RESI5 表达式为 `$close/Ref($close,5)-1`" |
-| `preference` | `user` | "用户偏好简洁回复，不要结尾总结" |
-| `project_state` | `project` | "当前持仓 5 支，六维评分模块刚上线" |
-| `working_summary` | 无（可新增）| "本周完成 AI 报告功能，下周计划信号胜率验证" |
-| `procedural_observation` | `feedback` | "qlib.init 重复调用会抛 reinitialize 错误" |
+| MetaClaw 类型              | QuantByQlib 对应 | 示例                                                |
+| ------------------------ | -------------- | ------------------------------------------------- |
+| `episodic`               | `project`      | "2026-03-29 修复了 FMP 百分比格式 bug"                    |
+| `semantic`               | `reference`    | "Alpha158 因子 RESI5 表达式为 `$close/Ref($close,5)-1`" |
+| `preference`             | `user`         | "用户偏好简洁回复，不要结尾总结"                                 |
+| `project_state`          | `project`      | "当前持仓 5 支，六维评分模块刚上线"                              |
+| `working_summary`        | 无（可新增）         | "本周完成 AI 报告功能，下周计划信号胜率验证"                         |
+| `procedural_observation` | `feedback`     | "qlib.init 重复调用会抛 reinitialize 错误"                |
 
 **建议**：在当前 `/Users/frank/.claude/projects/` 记忆体系中新增 `working_summary` 类型，作为每次重要功能完成后的里程碑记录，权重最高、优先注入。
 
@@ -129,12 +129,12 @@ MetaClaw 实验中发现了**1+1 < 1 问题**：Memory 和 Skill 同时注入比
 
 **QuantByQlib 场景映射**：
 
-| 失败类型 | 触发条件 | 自动生成的 Skill |
-|---------|---------|----------------|
-| AI 报告生成失败 | API 错误率 > 20% | `api_fallback.md`（降级策略）|
-| 基本面数据为 None | FMP 超时 > 30% | `fundamental_fallback.md`（yfinance 优先）|
-| 六维评分低置信度 | OHLCV 数据 < 60 天 | `short_history_handling.md` |
-| 回测结果偏差 | 简化模式被触发 | `backtest_degraded_mode.md` |
+| 失败类型        | 触发条件            | 自动生成的 Skill                            |
+| ----------- | --------------- | -------------------------------------- |
+| AI 报告生成失败   | API 错误率 > 20%   | `api_fallback.md`（降级策略）                |
+| 基本面数据为 None | FMP 超时 > 30%    | `fundamental_fallback.md`（yfinance 优先） |
+| 六维评分低置信度    | OHLCV 数据 < 60 天 | `short_history_handling.md`            |
+| 回测结果偏差      | 简化模式被触发         | `backtest_degraded_mode.md`            |
 
 **实现路径**：在 `PortfolioAIWorker` 的 `error` 信号中记录失败原因，定期聚类分析，人工确认后转化为 Skill 文件。
 
@@ -149,11 +149,11 @@ MetaClaw 实验中发现了**1+1 < 1 问题**：Memory 和 Skill 同时注入比
 
 **QuantByQlib 的量化场景类比**：
 
-| MetaClaw 条件 | 量化交易对应 |
-|-------------|------------|
-| 用户睡眠时段 | 美股盘后（16:00-22:00 ET）|
-| 键盘空闲 | 非交易时段 |
-| 日历忙碌 | 财报季/FOMC 高波动期（暂停学习）|
+| MetaClaw 条件 | 量化交易对应               |
+| ----------- | -------------------- |
+| 用户睡眠时段      | 美股盘后（16:00-22:00 ET） |
+| 键盘空闲        | 非交易时段                |
+| 日历忙碌        | 财报季/FOMC 高波动期（暂停学习）  |
 
 **可实现的最小 MVP**：在 `DailyExportWorker` 执行完成后（盘后），触发一个轻量级的参数自适应：根据当日信号的实际 T+5 收益，自动调整 `StockAnalyzer` 各维度的综合评分权重（当前是固定的 25/25/35/15）。
 
@@ -165,11 +165,11 @@ MetaClaw 实验中发现了**1+1 < 1 问题**：Memory 和 Skill 同时注入比
 
 **QuantByQlib 的天然奖励信号**：真实的 P&L 数据，比 PRM 更客观：
 
-| 信号类型 | 奖励定义 | 延迟 |
-|---------|---------|------|
-| AI 报告 → 买入决策 | T+5 收益 > 0 → +1 | 5 交易日 |
+| 信号类型         | 奖励定义               | 延迟     |
+| ------------ | ------------------ | ------ |
+| AI 报告 → 买入决策 | T+5 收益 > 0 → +1    | 5 交易日  |
 | AI 报告 → 买入决策 | T+20 收益 > SPY → +1 | 20 交易日 |
-| 六维技术评分 | 信号后 5 日涨跌与评分方向一致 | 5 交易日 |
+| 六维技术评分       | 信号后 5 日涨跌与评分方向一致   | 5 交易日  |
 
 这与已实现的 `backtesting/signal_validator.py`（T+5/T+20 胜率验证）完全吻合——该模块已经是 PRM 的量化版。
 
@@ -209,12 +209,12 @@ MetaClaw 实验中发现了**1+1 < 1 问题**：Memory 和 Skill 同时注入比
 
 ## 五、MetaClaw 不适合直接移植的部分
 
-| 机制 | 原因 |
-|------|------|
-| LoRA 在线训练 | 需要 Tinker 云端服务（专有）+ GPU，过重 |
-| 透明代理服务器 | QuantByQlib 直接调用 API，不需要代理层 |
-| GRPO 全参数优化 | 对于当前规模的量化 Agent 得不偿失 |
-| 日历感知调度 | 用市场时间替代即可，无需接 Google Calendar |
+| 机制         | 原因                            |
+| ---------- | ----------------------------- |
+| LoRA 在线训练  | 需要 Tinker 云端服务（专有）+ GPU，过重    |
+| 透明代理服务器    | QuantByQlib 直接调用 API，不需要代理层   |
+| GRPO 全参数优化 | 对于当前规模的量化 Agent 得不偿失          |
+| 日历感知调度     | 用市场时间替代即可，无需接 Google Calendar |
 
 ---
 

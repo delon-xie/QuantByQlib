@@ -180,15 +180,15 @@ strategies/qlib_strategy.py → _run_with_qlib_or_fallback()
 
 ### 4.1 DockerManager（`rdagent_integration/docker_manager.py`）
 
-| 方法 | 说明 |
-|------|------|
-| `available` | 属性，Docker Desktop 是否连接 |
-| `check_docker()` | 返回 `(bool, status_msg)` |
-| `image_exists()` | 检查 `local_qlib:latest` 是否存在 |
-| `start_container(env_vars, workspace_dir)` | 启动容器，挂载 Qlib 数据目录 + 工作目录 |
-| `stop_container()` | 停止容器 |
-| `stream_logs(log_cb, stop_event)` | 实时流式读取日志 |
-| `container_status()` | 返回 `"running"` / `"exited"` / `"not_found"` |
+| 方法                                         | 说明                                          |
+| ------------------------------------------ | ------------------------------------------- |
+| `available`                                | 属性，Docker Desktop 是否连接                      |
+| `check_docker()`                           | 返回 `(bool, status_msg)`                     |
+| `image_exists()`                           | 检查 `local_qlib:latest` 是否存在                 |
+| `start_container(env_vars, workspace_dir)` | 启动容器，挂载 Qlib 数据目录 + 工作目录                    |
+| `stop_container()`                         | 停止容器                                        |
+| `stream_logs(log_cb, stop_event)`          | 实时流式读取日志                                    |
+| `container_status()`                       | 返回 `"running"` / `"exited"` / `"not_found"` |
 
 **挂载关系：**
 ```
@@ -244,14 +244,14 @@ strategies/qlib_strategy.py → _run_with_qlib_or_fallback()
 
 核心函数：
 
-| 函数 | 说明 |
-|------|------|
-| `_precheck_expression(expr)` | 语法预检，返回 `(ok, reason)`，拦截 Max/Min 滥用、Abs(Ref) 嵌套、一元负号 |
-| `validate_factor(expr, universe, threshold_ic)` | Qlib 实测截面 IC，强制 `sequential` 后端避免 macOS 多进程崩溃 |
-| `get_valid_factors(min_ic, progress_cb)` | 主流程：预筛 + 合并历史 + 逐一验证，返回 `list[dict]` |
-| `save_valid_factors(factors)` | 持久化到 `valid_factors.json`（兼容 `list[dict]` 和 `list[str]`）|
-| `load_valid_factors(max_age_hours)` | 加载表达式列表（向后兼容，TTL 保护）|
-| `get_inject_status()` | 返回注入状态摘要，含 `factors` 列表（完整 name/description/expression）|
+| 函数                                              | 说明                                                       |
+| ----------------------------------------------- | -------------------------------------------------------- |
+| `_precheck_expression(expr)`                    | 语法预检，返回 `(ok, reason)`，拦截 Max/Min 滥用、Abs(Ref) 嵌套、一元负号    |
+| `validate_factor(expr, universe, threshold_ic)` | Qlib 实测截面 IC，强制 `sequential` 后端避免 macOS 多进程崩溃            |
+| `get_valid_factors(min_ic, progress_cb)`        | 主流程：预筛 + 合并历史 + 逐一验证，返回 `list[dict]`                     |
+| `save_valid_factors(factors)`                   | 持久化到 `valid_factors.json`（兼容 `list[dict]` 和 `list[str]`） |
+| `load_valid_factors(max_age_hours)`             | 加载表达式列表（向后兼容，TTL 保护）                                     |
+| `get_inject_status()`                           | 返回注入状态摘要，含 `factors` 列表（完整 name/description/expression）  |
 
 ### 4.6 FactorInjectWorker（`workers/factor_inject_worker.py`）
 
@@ -283,20 +283,20 @@ strategies/qlib_strategy.py → _run_with_qlib_or_fallback()
 
 ### 5.1 两层 IC 验证
 
-| 层级 | 位置 | 时机 | 说明 |
-|------|------|------|------|
-| 容器内验证 | `run_factor_discovery.py` | 因子发现时 | 10 只股票，近 252 日，筛除明显无效因子 |
+| 层级    | 位置                                  | 时机      | 说明                       |
+| ----- | ----------------------------------- | ------- | ------------------------ |
+| 容器内验证 | `run_factor_discovery.py`           | 因子发现时   | 10 只股票，近 252 日，筛除明显无效因子  |
 | 宿主机验证 | `factor_injector.validate_factor()` | 用户点击注入时 | 30 只蓝筹股，近 252 日，最终决定是否注入 |
 
 两层均使用截面 Spearman IC，阈值均为 0.03。宿主机验证对每个候选因子独立运行，采用 `joblib_backend=sequential` 避免 macOS 多进程崩溃。
 
 ### 5.2 数据持久化一览
 
-| 文件 | 内容 | 生命周期 |
-|------|------|---------|
-| `~/.quantbyqlib/rdagent_sessions.json` | 全部历史会话（含完整因子字段） | 累积追加，不自动清除 |
-| `~/.quantbyqlib/valid_factors.json` | 当前有效因子库（含名称+描述）| 每次注入时覆盖写入 |
-| `~/.quantbyqlib/rdagent_workspace/discovered_factors.json` | 最后一次容器发现结果 | 每次容器运行覆盖 |
+| 文件                                                         | 内容              | 生命周期       |
+| ---------------------------------------------------------- | --------------- | ---------- |
+| `~/.quantbyqlib/rdagent_sessions.json`                     | 全部历史会话（含完整因子字段） | 累积追加，不自动清除 |
+| `~/.quantbyqlib/valid_factors.json`                        | 当前有效因子库（含名称+描述） | 每次注入时覆盖写入  |
+| `~/.quantbyqlib/rdagent_workspace/discovered_factors.json` | 最后一次容器发现结果      | 每次容器运行覆盖   |
 
 `valid_factors.json` 格式（v2，向后兼容 v1）：
 ```json
@@ -392,23 +392,23 @@ for m in re.finditer(r'\b(Max|Min)\s*\(', expr):
 
 ### 已完成 ✅
 
-| 功能 | 说明 |
-|------|------|
-| Docker 容器完整生命周期管理 | 启动/停止/状态查询/日志流 |
-| DeepSeek LLM 因子生成 | 含 description/category，备用内置因子兜底 |
-| 容器内 IC 验证 | 截面 Spearman，动态时间窗口（最近 252 交易日） |
-| Qlib 数据目录自动检测 | 优先级列表探测，兼容不同挂载路径 |
-| 语法预检（双层） | 容器内 + 宿主机均有 `_precheck_expression()`，清晰错误提示 |
-| IC 验证（宿主机） | Spearman IC ≥ 0.03，sequential 后端，multiindex 去重 |
-| 合并去重 + 重验证 | 历史库自动纳入重验，失效因子自然淘汰 |
-| 因子持久化（完整字段） | `valid_factors.json` v2 格式，含 name/description |
-| 会话完整字段保存 | `SessionManager.add_session()` 保留所有字段 |
-| LightGBM 因子注入 | `_fit_with_extra_factors()` 拼接 Alpha158 + 自定义因子 |
-| 模型缓存失效 | 注入后 `clear_cache()` 强制下次重训练 |
-| 已注入因子 UI 展示 | 因子发现页 + 量化选股页，带 tooltip 通俗描述 |
-| EventBus 实时刷新 | `rdagent_factors_injected` 信号驱动选股页自动更新 |
-| 历史会话自动加载 | 页面打开时延迟 800ms 读取最新会话 |
-| 一键导出 CSV | 因子发现页「📥 导出」按钮 |
+| 功能                | 说明                                              |
+| ----------------- | ----------------------------------------------- |
+| Docker 容器完整生命周期管理 | 启动/停止/状态查询/日志流                                  |
+| DeepSeek LLM 因子生成 | 含 description/category，备用内置因子兜底                 |
+| 容器内 IC 验证         | 截面 Spearman，动态时间窗口（最近 252 交易日）                  |
+| Qlib 数据目录自动检测     | 优先级列表探测，兼容不同挂载路径                                |
+| 语法预检（双层）          | 容器内 + 宿主机均有 `_precheck_expression()`，清晰错误提示     |
+| IC 验证（宿主机）        | Spearman IC ≥ 0.03，sequential 后端，multiindex 去重  |
+| 合并去重 + 重验证        | 历史库自动纳入重验，失效因子自然淘汰                              |
+| 因子持久化（完整字段）       | `valid_factors.json` v2 格式，含 name/description   |
+| 会话完整字段保存          | `SessionManager.add_session()` 保留所有字段           |
+| LightGBM 因子注入     | `_fit_with_extra_factors()` 拼接 Alpha158 + 自定义因子 |
+| 模型缓存失效            | 注入后 `clear_cache()` 强制下次重训练                     |
+| 已注入因子 UI 展示       | 因子发现页 + 量化选股页，带 tooltip 通俗描述                    |
+| EventBus 实时刷新     | `rdagent_factors_injected` 信号驱动选股页自动更新          |
+| 历史会话自动加载          | 页面打开时延迟 800ms 读取最新会话                            |
+| 一键导出 CSV          | 因子发现页「📥 导出」按钮                                  |
 
 ### 不支持 / 不在范围内
 
