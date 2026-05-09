@@ -227,61 +227,61 @@ graph TD
 
 ## 仪表板
 
-!images/dashboard.png
+![dashboard](images/dashboard.png)
 
 ---
 
 ## 量化选股 - 深度学习集成（LSTM）
 
-!images/stock_screening_lstm.png
+![stock screening lstm](images/stock_screening_lstm.png)
 
 ---
 
 ## 量化选股 - 选股结果（机器学习 / Deep Learning）
 
-!images/screening_result_4.png
+![screening result](images/screening_result_4.png)
 
 ---
 
 ## 量化选股 - 深度学习集成（Deep Learning）
 
-!images/stock_screening_deeplearning.png
+![stock screening deeplearning](images/stock_screening_deeplearning.png)
 
 ---
 
 ## 量化选股 - 深度学习集成（LightGBM）
 
-!images/stock_screening_lightgbm.png
+![stock screening lightgbm](images/stock_screening_lightgbm.png)
 
 ---
 
 ## 量化选股 - 选股结果（机器学习 · 六维技术分析）
 
-!images/screening_result.png
+![screening result](images/screening_result.png)
 
-!images/screening_result_2.png
+![screening result](images/screening_result_2.png)
 
-!images/screening_result_3.png
+![screening result](images/screening_result_3.png)
 
 ---
 
 ## 量化选股 - 交易信号
 
-!images/screening_signal.png
+![screening signal](images/screening_signal.png)
 
 ---
 
 ## 量化选股 - 配置下载数据
 
-!images/config_download.png
+![config download](images/config_download.png)
 
-!images/config_download_2.png
+![config download](images/config_download_2.png)
 
 ---
 
 ## 量化选股 - 运行日志
 
-!images/run_log.png
+![screening result](images/run_log.png
 
 ---
 
