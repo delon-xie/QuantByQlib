@@ -281,7 +281,7 @@ graph TD
 
 ## 量化选股 - 运行日志
 
-![screening result](images/run_log.png
+![screening result](images/run_log.png)
 
 ---
 
