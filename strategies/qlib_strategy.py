@@ -10,46 +10,60 @@ Qlib 策略实现
 from __future__ import annotations
 
 from typing import Optional
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime as dt_cls
 import pandas as pd
 from loguru import logger
 
 from strategies.base_strategy import BaseStrategy, StrategyResult
 
+from core.model_helper import get_model
+from pathlib import Path
+from typing import Optional, Literal
+from core.qlibhelper import _is_valid_stock_code
+import torch
 
 # ── Qlib 数据日期范围检测 ──────────────────────────────────────
 
-def _get_qlib_data_end_date() -> Optional[date]:
+def _get_qlib_data_end_date(market: Literal["us", "cn", "hk", "tw", "jp", "kr", "bt"]) -> Optional[date]:
     """
-    检测 Qlib 美股数据中最新可用交易日。
+    检测 Qlib 股票市场数据中最新可用交易日。
     直接读 calendars/day.txt 末尾行，不依赖 D.features 也不依赖 app_state。
     使用 qlib_manager._find_us_data_dir() 自动定位正确的美股数据目录。
     """
-    from datetime import datetime as dt_cls
     try:
-        from data.qlib_manager import _find_us_data_dir
-        data_dir = _find_us_data_dir()
+        from data.qlib_manager import _find_data_dir
+        data_dir = _find_data_dir()
     except Exception:
-        from pathlib import Path
         data_dir = Path.home() / ".qlib" / "qlib_data"
 
-    # 检查是否有美股 features 目录
     features_dir = data_dir / "features"
     if not features_dir.exists():
         logger.debug(f"Qlib features/ 目录不存在：{features_dir}")
         return None
 
-    us_dirs = [
-        d for d in features_dir.iterdir()
-        if d.is_dir()
-        and d.name.replace("-", "").replace(".", "").isalpha()
-        and not any(d.name.lower().startswith(pfx) for pfx in ("sh", "sz", "bj"))
-    ]
-    if not us_dirs:
-        logger.debug(f"Qlib features/ 下未发现美股代码，数据目录：{data_dir}")
+    # ---------- 2. 按市场筛选股票目录 ----------
+    def is_us_code(name: str) -> bool:
+        name = name.replace("-", "").replace(".", "")
+        return (
+            name.isalpha()
+            and not any(name.lower().startswith(pfx) for pfx in ("sh", "sz", "bj"))
+        )
+
+    def is_cn_code(name: str) -> bool:
+        return name.lower().startswith(("sh", "sz", "bj"))
+
+    #if market == "us":
+    #    target_dirs = [d for d in features_dir.iterdir() if d.is_dir() and is_us_code(d.name)]
+    #else:  # cn
+    #    target_dirs = [d for d in features_dir.iterdir() if d.is_dir() and is_cn_code(d.name)]
+
+    target_dirs = [d for d in features_dir.iterdir() if d.is_dir()]
+    
+    if not target_dirs:
+        logger.debug(f"Qlib features/ 下未发现 {market.upper()} 数据，目录：{data_dir}")
         return None
 
-    # 读取日历末尾日期
+    # ---------- 3. 读取日历 ----------
     cal_file = data_dir / "calendars" / "day.txt"
     if not cal_file.exists():
         logger.debug(f"Qlib 日历文件不存在：{cal_file}")
@@ -62,8 +76,10 @@ def _get_qlib_data_end_date() -> Optional[date]:
             if line:
                 try:
                     latest = dt_cls.strptime(line, "%Y-%m-%d").date()
-                    logger.debug(f"Qlib 美股数据最新日期：{latest}，"
-                                 f"数据目录：{data_dir}，{len(us_dirs)} 支美股")
+                    logger.debug(
+                        f"Qlib {market.upper()} 数据最新交易日：{latest} "
+                        f"（数据目录：{data_dir}，{len(target_dirs)} 只标的）"
+                    )
                     return latest
                 except ValueError:
                     continue
@@ -111,9 +127,11 @@ def _build_dataset(universe: list[str], handler_class_name: str = "Alpha158",
     pred_days:  验证+测试总窗口（各占一半）
     """
     from qlib.data.dataset import DatasetH
+    from core.app_state import get_state
+    reg = get_state().reg
 
     # 以 Qlib 数据实际结尾日期为基准
-    data_end = _get_qlib_data_end_date()
+    data_end = _get_qlib_data_end_date(reg)
     if data_end is None:
         raise RuntimeError("无法获取 Qlib 数据日期范围，数据可能为空")
 
@@ -252,9 +270,9 @@ def _yfinance_score_universe(
         pct = 10 + int((i / total) * 70)
         cb(pct, f"下载价格数据 {i+1}-{min(i+batch, total)}/{total}...")
         try:
-            tickers_str = " ".join(chunk)
+            #tickers_str = " ".join(chunk)
             df_all = yf.download(
-                tickers_str,
+                chunk,
                 period="3mo",
                 progress=False,
                 auto_adjust=True,
@@ -355,14 +373,14 @@ def _patch_pytorch_model_best_param(model) -> None:
     if not any(name in type(model).__name__ for name in _pytorch_model_names):
         return
 
-    import torch
+    #import torch
 
     original_fit = model.fit.__func__ if hasattr(model.fit, '__func__') else None
     if original_fit is None:
         return  # 无法 patch，跳过
 
     def patched_fit(self, dataset, evals_result=dict(), save_path=None):
-        import torch
+        #import torch
         from qlib.data.dataset.handler import DataHandlerLP
         from qlib.utils import get_or_create_path
 
@@ -456,7 +474,7 @@ def _patch_pytorch_model_best_param(model) -> None:
         sample_num = x_values.shape[0]
         preds = []
 
-        import torch
+        #import torch
         for begin in range(0, sample_num, self.batch_size):
             end = min(begin + self.batch_size, sample_num)
             x_batch = torch.from_numpy(x_values[begin:end]).float().to(self.device)
@@ -600,8 +618,10 @@ def _run_with_qlib_or_fallback(
             except Exception:
                 pass
 
+    from core.app_state import get_state
+    reg = get_state().reg
     # 检测 Qlib 数据是否足够
-    data_end = _get_qlib_data_end_date()
+    data_end = _get_qlib_data_end_date(reg)
     days_since_data = (date.today() - data_end).days if data_end else 9999
 
     if data_end is None or days_since_data > 3650:
@@ -651,13 +671,15 @@ def _run_with_qlib_or_fallback(
         # 应用 Qlib 0.9.7 best_param bug 修复
         _patch_pytorch_model_best_param(model)
 
+        from core.app_state import get_state
+        reg = get_state().reg
         # LightGBM：若有自定义因子则注入训练特征
         _patched_prepare = None
         _original_prepare = dataset.prepare  # 保留原始引用，用于后续恢复
         if extra_exprs and is_lgb:
             cb(32, f"注入 {len(extra_exprs)} 个自定义因子到训练特征...")
             universe_qlib = [t.lower() for t in universe]
-            data_end_obj = _get_qlib_data_end_date()
+            data_end_obj = _get_qlib_data_end_date(reg)
             anchor = data_end_obj
             valid_days = max(pred_days, 20)
             test_days  = max(pred_days, 10)
@@ -736,6 +758,9 @@ class GrowthStocksStrategy(BaseStrategy):
         _qlib_init_check()
 
         def model_factory():
+            return get_model("growth_stocks")
+
+            # 废弃，旧版本固定参数，改为直接使用 Qlib 内置 LGBModel 默认参数，避免过拟合和不适用问题
             from qlib.contrib.model.gbdt import LGBModel
             return LGBModel(
                 loss="mse",
@@ -769,6 +794,9 @@ class MarketAdaptiveStrategy(BaseStrategy):
         regime = self._detect_regime()
 
         def model_factory():
+            return get_model("market_adaptive_bull") if regime == "bull" else get_model("market_adaptive_bear")
+        
+            # 废弃，旧版本固定参数，改为直接使用 Qlib 内置 LGBModel 默认参数，避免过拟合和不适用问题
             from qlib.contrib.model.gbdt import LGBModel
             lr = 0.05 if regime == "bull" else 0.03
             return LGBModel(learning_rate=lr, num_leaves=128, num_threads=4)
@@ -804,8 +832,8 @@ class DeepLearningStrategy(BaseStrategy):
     KEY  = "deep_learning"
     NAME = "深度学习集成"
     TOPK = 50
-    # LSTM 对内存敏感，限制宇宙规模防止 OOM 崩溃
-    MAX_UNIVERSE = 300
+    # LSTM 对内存敏感，限制股票池规模防止 OOM 崩溃
+    MAX_UNIVERSE = 500
 
     def run(self, universe: list[str], progress_cb=None) -> StrategyResult:
         _qlib_init_check()
@@ -818,6 +846,9 @@ class DeepLearningStrategy(BaseStrategy):
             universe = universe[: self.MAX_UNIVERSE]
 
         def model_factory():
+            return get_model("deep_learning")
+            
+            # 废弃，旧版本固定参数，改为直接使用 Qlib 内置 LSTM 默认参数，避免过拟合和不适用问题
             from qlib.contrib.model.pytorch_lstm import LSTM
             return LSTM(
                 d_feat=158,       # Alpha158 输出 158 个特征
@@ -845,7 +876,7 @@ class IntradayProfitStrategy(BaseStrategy):
     KEY  = "intraday_profit"
     NAME = "短线获利"
     TOPK = 30
-    MAX_UNIVERSE = 300
+    MAX_UNIVERSE = 500
 
     def run(self, universe: list[str], progress_cb=None) -> StrategyResult:
         _qlib_init_check()
@@ -857,6 +888,9 @@ class IntradayProfitStrategy(BaseStrategy):
             universe = universe[: self.MAX_UNIVERSE]
 
         def model_factory():
+            return get_model("intraday_profit")
+        
+            # 废弃，旧版本固定参数，改为直接使用 Qlib 内置 GRU 默认参数，避免过拟合和不适用问题
             from qlib.contrib.model.pytorch_gru import GRU
             return GRU(
                 d_feat=158,       # Alpha158 输出 158 个特征
@@ -886,7 +920,7 @@ class PyTorchFullMarketStrategy(BaseStrategy):
     KEY  = "pytorch_full_market"
     NAME = "全市场深度学习"
     TOPK = 50
-    MAX_UNIVERSE = 400   # Alpha360 特征更多，内存开销更大，适当限制
+    MAX_UNIVERSE = 500   # Alpha360 特征更多，内存开销更大，适当限制
 
     def run(self, universe: list[str], progress_cb=None) -> StrategyResult:
         _qlib_init_check()
@@ -898,6 +932,9 @@ class PyTorchFullMarketStrategy(BaseStrategy):
             universe = universe[: self.MAX_UNIVERSE]
 
         def model_factory():
+            return get_model("pytorch_full_market")
+        
+            # 废弃，旧版本固定参数，改为直接使用 Qlib 内置 LSTM 默认参数，避免过拟合和不适用问题
             from qlib.contrib.model.pytorch_lstm import LSTM
             return LSTM(
                 d_feat=360,       # Alpha360 输出 360 个特征

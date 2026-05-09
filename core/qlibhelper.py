@@ -134,9 +134,41 @@ def _check_qlib_init(bus) -> None:
             from qlib.config import C
             #C.set({"joblib_backend", "sequential"})
             C["joblib_backend"] = "sequential"
+            
+            """
+            为了防范程序交易错误或极端波动引发的“闪崩”，港股针对特定股票设有 市场波动调节机制（VCM，俗称冷静期），具体规则如下：
+            适用范围：主要涵盖恒生综合大型股、中型股及小型股指数成份股、SPAC股份、部分ETF等。
+            触发门槛：在持续交易时段内，当股份的潜在成交价偏离 5分钟前最后一次成交价​ 达到一定百分比时触发：
+            恒生综合大型股指数成份股：±10%
+            恒生综合中型股指数成份股：±15%
+            恒生综合小型股指数成份股：±20%
+            冷静期安排：触发后进入 5分钟冷静期。期间交易不会停止，但该股只能在被触发的限价范围内（如参考价的±10%）继续进行撮合。5分钟过后，恢复正常交易，价格限制解除，且同一只证券在同一节交易时段内最多只会触发一次。
+            不适用时段：开市前时段、收市竞价交易时段，以及持续交易时段的首15分钟和尾盘（下午最后20分钟）不进行监测。
+            此外，在开市前时段（集合竞价时段），股票的买卖盘价格一般不能偏离上日收市价超过 ±15%，超出此范围的挂单会被系统拒绝。
+            """
             _default_region_config[REG_HK] = {
+                "trade_unit": 1, #1股、50股、100股、1000股
+                "limit_threshold": 0.4, #设置0.4匹配95%的情况，极端情况不考虑
+                "deal_price": "close",
+            }
+            _default_region_config[REG_BT] = {
+                "trade_unit": 0.00000001,
+                "limit_threshold": None,
+                "deal_price": "close",
+            }
+            _default_region_config[REG_TW] = {
+                "trade_unit": 1000,
+                "limit_threshold": 0.1,
+                "deal_price": "close",
+            }
+            _default_region_config[REG_JP] = {
                 "trade_unit": 100,
                 "limit_threshold": None,
+                "deal_price": "close",
+            }
+            _default_region_config[REG_KR] = {
+                "trade_unit": 1,
+                "limit_threshold": 0.15,
                 "deal_price": "close",
             }
             
