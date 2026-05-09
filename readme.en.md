@@ -222,33 +222,59 @@ graph TD
 
 ## Screenshots
 
+---
+
 ### Dashboard
-!images/dashboard.png
+![dashboard](images/dashboard.png)
+
+---
 
 ### Quant Screening - Deep Learning Integration (LSTM)
-!images/stock_screening_lstm.png
+![stock screening lstm](images/stock_screening_lstm.png)
+
+---
 
 ### Quant Screening - Results (Machine Learning / Deep Learning)
-!images/screening_result_4.png
+![screening result](images/screening_result_4.png)
+
+![stock screening deeplearning](images/stock_screening_deeplearning.png)
+
+---
 
 ### Quant Screening - Deep Learning Integration (LightGBM)
-!images/stock_screening_lightgbm.png
+
+![stock screening lightgbm](images/stock_screening_lightgbm.png)
+
+---
 
 ### Quant Screening - Six-Dimensional Technical Analysis
-!images/screening_result.png
-!images/screening_result_2.png
-!images/screening_result_3.png
+
+![screening result](images/screening_result.png)
+
+![screening result](images/screening_result_2.png)
+
+![screening result](images/screening_result_3.png)
+
+---
 
 ### Trading Signals
-!images/screening_signal.png
+
+![screening signal](images/screening_signal.png)
+
+---
 
 ### Strategy Backtesting
-!images/backtest.png
-!images/backtest2.png
 
+![backtest](images/backtest.png)
+
+![backtest](images/backtest2.png)
+
+---
 ### Configuration & Logs
-!images/config_download.png
-!images/run_log.png
+
+![config download](images/config_download.png)
+
+![config download](images/config_download_2.png)
 
 ---
 
