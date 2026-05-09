@@ -11,12 +11,24 @@ REG_TW = "tw"
 REG_HK = "hk"
 REG_JP = "jp"
 REG_KR = "kr"
+REG_BT = "bt"
 REG_CN_NAME = "A股"
 REG_US_NAME = "美股"
 REG_TW_NAME = "台股"
 REG_HK_NAME = "港股"
 REG_JP_NAME = "日股"
 REG_KR_NAME = "韩股"
+REG_BT_NAME  = "Crypto"
+
+MARKETS = [
+        (REG_US, REG_US_NAME),
+        (REG_CN, REG_CN_NAME),
+        (REG_HK, REG_HK_NAME),
+        (REG_TW, REG_TW_NAME),
+        (REG_JP, REG_JP_NAME),
+        (REG_KR, REG_KR_NAME),
+        (REG_BT, REG_BT_NAME),
+    ]
 
 # ---------- 市场规则 ----------
 MARKET_RULES: dict[str, Pattern] = {
@@ -26,6 +38,7 @@ MARKET_RULES: dict[str, Pattern] = {
     "jp": re.compile(r"^jp\d{4}$"),                   # 日股
     "kr": re.compile(r"^kr\d{6}$"),                   # 韩股
     "us": re.compile(r"^[A-Z]+([-.][A-Z0-9]+)?$"),    # 美股
+    "bt": re.compile(r"^[A-Z]+$"),                    # Crypto
 }
 
 

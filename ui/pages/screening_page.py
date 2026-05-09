@@ -14,7 +14,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from ui.theme import COLORS
-
+from core.app_state import get_state
+from ui.components.instrument_combobox import InstrumentComboBox
 
 # 策略定义
 STRATEGIES = [
@@ -164,6 +165,7 @@ class StrategyCard(QFrame):
 
     def __init__(self, config: dict, parent=None):
         super().__init__(parent)
+        self.state = get_state()
         self.config = config
         self._is_selected = False
         self.setObjectName("card")
@@ -264,10 +266,11 @@ class StrategyCard(QFrame):
 class ScreeningPage(QWidget):
     """量化选股页面"""
 
-    run_requested = pyqtSignal(str)    # 策略 key
+    run_requested = pyqtSignal(str, str)    # 策略 key, Region
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.state = get_state()
         self._selected_strategy = "deep_learning"
         self._strategy_cards: dict[str, StrategyCard] = {}
         self._setup_ui()
@@ -287,7 +290,7 @@ class ScreeningPage(QWidget):
         title.setObjectName("page_title")
         layout.addWidget(title)
 
-        subtitle = QLabel("选择 Qlib 量化策略，系统将从美股全市场筛选最优个股组合")
+        subtitle = QLabel(f"选择 Qlib 量化策略，系统将从{self.state.reg_name}全市场筛选最优个股组合")
         subtitle.setObjectName("page_subtitle")
         layout.addWidget(subtitle)
 
@@ -380,6 +383,16 @@ class ScreeningPage(QWidget):
         # 按钮行
         btn_row = QHBoxLayout()
 
+        self._instrument_combo = InstrumentComboBox()
+        self._instrument_combo.setMinimumHeight(38)
+        self._instrument_combo.setPlaceholderText("请选择采集范围")
+        self._instrument_combo.setToolTip(
+            "选择股票范围：\n"
+            f"从 {get_state().reg}_data/instruments 选择txt文件作为股票范围\n"
+            "默认选择（all）全部股票：采集所有股票的最新数据（耗时较长）\n"
+        )
+        btn_row.addWidget(self._instrument_combo)
+
         self._run_btn = QPushButton("▶ 开始选股")
         self._run_btn.setMinimumHeight(42)
         self._run_btn.clicked.connect(self._on_run_clicked)
@@ -413,13 +426,13 @@ class ScreeningPage(QWidget):
         if not state.qlib_initialized:
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "Qlib 未初始化",
-                "请先前往「参数配置」下载 Qlib 美股数据后再运行选股。")
+                f"请先前往「参数配置」下载 Qlib {state.reg_name}数据后再运行选股。")
             return
         self._run_btn.setEnabled(False)
         self._stop_btn.setEnabled(True)
         self._progress_bar.setVisible(True)
         self._progress_bar.setValue(0)
-        self.run_requested.emit(self._selected_strategy)
+        self.run_requested.emit(self._selected_strategy, self._instrument_combo.currentText())
 
     def _on_stop_clicked(self) -> None:
         from core.event_bus import get_event_bus

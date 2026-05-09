@@ -25,14 +25,26 @@ from ui.pages.factor_page     import FactorPage
 from ui.pages.config_page     import ConfigPage
 from ui.pages.logs_page       import LogsPage
 from ui.theme import COLORS
-
+from ui.components.market_combo import MarketComboBox
+from utils.logger import logger
+import sys
+import traceback
+from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal, pyqtSlot, QTimer, QThread
+from PyQt6.QtWidgets import QApplication, QMessageBox
+from ui.components.market_combo import MarketComboBox
+from ui.components.regionlabel import RegionLabel
+from core.qlibhelper import _check_qlib_init
 
 class MainWindow(QMainWindow):
     """应用主窗口"""
 
-    def __init__(self):
+    def __init__(self, app):
+        from core.app_state import get_state
+        reg_name = get_state().reg_name
         super().__init__()
         self.setWindowTitle("QuantByQlib — 美股量化辅助决策平台")
+        self.setWindowTitle(f"QuantByQlib — {reg_name}量化辅助决策平台")
+        self.app = app
 
         # 自适应屏幕大小：取可用区域的 95%，但不低于 960×600
         from PyQt6.QtWidgets import QApplication
@@ -65,6 +77,7 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
 
+        # ===== 左右结构=====
         root_layout = QHBoxLayout(central)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
@@ -116,6 +129,11 @@ class MainWindow(QMainWindow):
         bar.addWidget(self._status_label)
 
         bar.addPermanentWidget(QLabel("  "))
+        self._qlib_reg_status = RegionLabel()
+        self._qlib_reg_status.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 12px;")
+        bar.addPermanentWidget(self._qlib_reg_status)
+
+        bar.addPermanentWidget(QLabel("  "))
         self._qlib_status = QLabel("Qlib: 未初始化")
         self._qlib_status.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 12px;")
         bar.addPermanentWidget(self._qlib_status)
@@ -143,12 +161,15 @@ class MainWindow(QMainWindow):
         # 状态栏消息
         bus.status_message.connect(self._show_status)
 
+        # 切换市场事件
+        bus.reg_changed.connect(self._on_reg_changed_to)  # 切换市场后导航到仪表盘 
+        
         # Qlib 初始化事件
         bus.qlib_initialized.connect(self._on_qlib_initialized)
 
         # 选股运行（由 screening_page 触发，_pages 仍保存 page 实例）
         screening_page: ScreeningPage = self._pages["screening"]
-        screening_page.run_requested.connect(self._on_run_screening)
+        #screening_page.run_requested.connect(self._on_run_screening)
 
         # 个股详情（仪表盘搜索 / 选股结果点击 → 导航到结果页并加载面板）
         bus.show_ticker_detail.connect(self._on_show_ticker_detail)
@@ -162,10 +183,32 @@ class MainWindow(QMainWindow):
     def _on_navigate_to(self, page_key: str) -> None:
         """事件总线触发的页面跳转（带侧边栏同步）"""
         self._sidebar.navigate_to(page_key)
+        
+        
+    def _on_reg_changed_to(self, reg: str, reg_name: str) -> None:
+        """响应市场切换事件：导航到仪表盘并显示提示"""
+        self.app.setApplicationDisplayName(f"QuantByQlib — {reg_name}量化辅助决策平台")
+        self.setWindowTitle(f"QuantByQlib — {reg_name}量化辅助决策平台")
+        self._sidebar._setup_reg(reg, reg_name)
+        # 触发全局事件通知其他组件（如主窗口）更新显示
+        self._show_status(f"已切换市场到 {reg}，请在「参数配置」确认数据源设置")
+        
+        # 强制初始化 qlib 状态（切换市场后需要重新检测数据）
+        # ── 检测 Qlib 初始化状态（延迟到事件循环后，确保主窗口信号连接就绪）
+        from core.event_bus import get_event_bus
+        bus = get_event_bus()
+        QTimer.singleShot(50, lambda: _check_qlib_init(bus))
+        bus.status_message.emit("QuantByQlib 已就绪")
+    
+        # 启动后默认显示仪表盘（延迟到事件循环开始后执行，确保 stack 已就绪）
+        QTimer.singleShot(0, lambda: self._sidebar.navigate_to("dashboard"))
+        
+        # 若本地已有美股 Qlib 数据，后台自动初始化（不阻塞 UI）
+        QTimer.singleShot(500, self._auto_init_qlib) # 会自动转到us_data （异常）
 
     # ── 业务事件处理 ───────────────────────────────────────
 
-    def _on_run_screening(self, strategy_key: str) -> None:
+    def _on_run_screening(self, strategy_key: str, instrument_range: str) -> None:
         """启动量化选股 Worker"""
         from core.event_bus import get_event_bus
         from PyQt6.QtCore import QThreadPool
@@ -174,9 +217,16 @@ class MainWindow(QMainWindow):
         bus = get_event_bus()
         bus.status_message.emit(f"正在运行策略：{strategy_key}...")
         bus.screening_started.emit(strategy_key)
+        
+        # 需要测试，用新的WorkerManager，还是用原来的 _screening_worker
+        # 创建管理器
+        #from workers.screening_worker import WorkerManager
+        #manager = WorkerManager()
+        #worker = manager.start_screening(strategy_key, instrument_range, bus)
+        #QThreadPool.globalInstance().start(manager.current_worker)
 
         # 记录当前 worker 以支持取消
-        self._screening_worker = ScreeningWorker(strategy_key)
+        self._screening_worker = ScreeningWorker(strategy_key, instrument_range)
         # Worker 信号同步到事件总线
         self._screening_worker.signals.progress.connect(bus.screening_progress.emit)
         self._screening_worker.signals.completed.connect(bus.screening_completed.emit)

@@ -49,6 +49,8 @@ def main() -> int:
     from PyQt6.QtWidgets import QApplication
     from PyQt6.QtCore import Qt
     from PyQt6.QtGui import QIcon
+    from core.app_state import get_state
+    reg_name = get_state().reg_name
 
     # 高 DPI 支持
     QApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -76,7 +78,7 @@ def main() -> int:
     # ── 创建并显示主窗口 ─────────────────────────────────────
     from ui.main_window import MainWindow
     from PyQt6.QtCore import QTimer
-    window = MainWindow()
+    window = MainWindow(app)
     window.show()
 
     # ── 检测 Qlib 初始化状态（延迟到事件循环后，确保主窗口信号连接就绪）

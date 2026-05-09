@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QFont
+from ui.components.regionlabel import RegionLabel
 
 
 # 导航项定义：(页面键, 图标文字, 显示标签)
@@ -62,24 +63,27 @@ class Sidebar(QWidget):
         self._compact = avail_h < 700
         self._setup_ui()
 
+    def _setup_reg(self, reg: str, reg_name: str) -> None:
+        self.version_label.setText(f"{reg_name}量化辅助决策 v1.0")
+
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
         # ── Logo 区域 ──────────────────────────────────────
-        logo_label = QLabel("QuantByQlib")
+        logo_label = RegionLabel("QuantByQlib", needChangeText = False)
         logo_label.setObjectName("sidebar_logo")
         logo_font = QFont()
         logo_font.setPointSize(13 if self._compact else 15)
         logo_font.setBold(True)
         logo_label.setFont(logo_font)
         layout.addWidget(logo_label)
+        self.version_label = QLabel("美股量化辅助决策 v1.0")
 
         if not self._compact:
-            version_label = QLabel("美股量化辅助决策 v1.0")
-            version_label.setObjectName("sidebar_version")
-            layout.addWidget(version_label)
+            self.version_label.setObjectName("sidebar_version")
+            layout.addWidget(self.version_label)
 
         # ── 分隔线 ────────────────────────────────────────
         from PyQt6.QtWidgets import QFrame, QScrollArea

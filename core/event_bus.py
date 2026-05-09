@@ -57,6 +57,9 @@ class EventBus(QObject):
     # ── 系统事件 ─────────────────────────────────────────────
     log_message = pyqtSignal(str, str)               # 参数: 级别(INFO/WARN/ERROR), 消息
     status_message = pyqtSignal(str)                 # 参数: 状态栏消息
+    
+    # ── 切换新市场事件 ─────────────────────────────────────────────
+    reg_changed = pyqtSignal(str, str)               # 参数: 切换新的注册市场代码（如 "US"）
 
 
 # 模块级单例
