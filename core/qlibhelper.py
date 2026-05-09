@@ -41,6 +41,13 @@ MARKET_RULES: dict[str, Pattern] = {
     "bt": re.compile(r"^[A-Z]+$"),                    # Crypto
 }
 
+# -------------专用于存储QLIB 初始化状态 -----------
+QLIB_INIT_STATUS = {
+    "provider_uri" :"",
+    "region" : "",
+    "inited" : "False"
+}
+
 
 def _normalize_ticker(ticker: str, reg: str) -> str:
     """标准化 ticker：将 Qlib 格式（BRK.B）转换为 yfinance 格式（BRK-B）"""
@@ -133,9 +140,8 @@ def _check_qlib_init(bus) -> None:
                 "deal_price": "close",
             }
             
-            qlib.init(provider_uri=str(qlib_data), region=state.reg)
-            state.qlib_initialized = True
-            state.qlib_data_path = str(qlib_data)
+            qlib_safeinit(qlib_data)
+
             logger.info(f"Qlib 初始化成功：{qlib_data}")
             bus.qlib_initialized.emit()
         except Exception as e:
@@ -144,3 +150,42 @@ def _check_qlib_init(bus) -> None:
     else:
         logger.info("Qlib 数据未找到，请前往「参数配置」下载数据")
         state.qlib_initialized = False
+
+def _get_calendar_ref_ticker() -> str:
+        from core.app_state import get_state
+        reg = get_state().reg
+        match reg:
+            case "us":
+                return CALENDAR_REF_TICKER_US
+            case "cn":
+                return CALENDAR_REF_TICKER_CN
+            case "hk":
+                return CALENDAR_REF_TICKER_HK
+            case "tw":
+                return CALENDAR_REF_TICKER_TW
+            case "jp":
+                return CALENDAR_REF_TICKER_JP
+            case "kr":
+                return CALENDAR_REF_TICKER_KR
+            case "bt":
+                return CALENDAR_REF_TICKER_BT
+            case _:
+                return CALENDAR_REF_TICKER_US
+
+def qlib_safeinit(qlib_data : str):
+    import qlib
+    state = get_state()
+    if(
+        str(qlib_data) == QLIB_INIT_STATUS["provider_uri"] 
+        and state.reg == QLIB_INIT_STATUS["region"] 
+        and True == state.qlib_initialized
+    ) :
+        return
+            
+    QLIB_INIT_STATUS["inited"] = False
+    qlib.init(provider_uri=str(qlib_data), region=state.reg)
+    state.qlib_initialized = True
+    state.qlib_data_path = str(qlib_data)
+    QLIB_INIT_STATUS["provider_uri"] = str(qlib_data)
+    QLIB_INIT_STATUS["region"] = state.reg
+    QLIB_INIT_STATUS["inited"] = True

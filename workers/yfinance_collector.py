@@ -1,7 +1,7 @@
 """
 yfinance → Qlib 格式数据采集 Worker
 从 Yahoo Finance 批量下载美股 OHLCV 数据，直接写入 Qlib 二进制格式，
-无需 qlib.init()，支持追加（保留历史数据）和新建两种模式。
+支持追加（保留历史数据）和新建两种模式。
 
 二进制格式：[start_idx: float32][v0: float32][v1: float32]...
   - start_idx：该股票在日历中的起始偏移量（对应 calendars/day.txt 的行号）
@@ -20,23 +20,10 @@ import pandas as pd
 from PyQt6.QtCore import QObject, QRunnable, pyqtSignal, pyqtSlot, QTimer
 from PyQt6.QtCore import QEventLoop
 import yfinance as yf
-def _find_us_data_dir() -> Path:
-    """自动探测美股 Qlib 数据目录（与 qlib_manager 保持一致）"""
-    candidates = [
-        Path.home() / ".qlib" / "qlib_data",
-        Path.home() / ".qlib" / "qlib_data" / "us_data",
-    ]
-    for path in candidates:
-        features = path / "features"
-        if not features.exists():
-            continue
-        for d in features.iterdir():
-            if (d.is_dir()
-                    and d.name.replace("-", "").replace(".", "").isalpha()
-                    and not any(d.name.lower().startswith(p) for p in ("sh", "sz", "bj"))):
-                return path
-    return candidates[0]
-
+import re
+from typing import List, Pattern
+from core.qlibhelper import _get_accepted_region, _find_data_dir, _get_calendar_ref_ticker, _normalize_ticker
+from core.app_state import get_state
 
 QLIB_DATA_DIR = _find_data_dir()
 # yfinance 下载每批的股票数量（过大会超时）
@@ -59,7 +46,7 @@ class YFinanceCollectorWorker(QRunnable):
     """
     yfinance → Qlib 格式数据采集 Worker
 
-    scope: "sp500" | "nasdaq100"
+    scope: "sp500" | "nasdaq100" | "all" | user define
     start_date: 历史数据起始日期（仅对全新安装生效，追加模式自动从现有数据末尾续接）
     """
 
@@ -94,8 +81,11 @@ class YFinanceCollectorWorker(QRunnable):
 
         # 1. 读取现有日历
         cal_dates, cal_index = self._load_calendar()
-        old_cal_end = cal_dates[-1] if cal_dates else date(2000, 1, 1)
-        self._log(f"[INFO] 现有日历：{cal_dates[0]} ~ {old_cal_end}，共 {len(cal_dates)} 个交易日")
+        # 取已有日历的第一个日期；若不存在或为空，则使用 date(2000, 1, 1)
+        first_date = cal_dates[0] if cal_dates and len(cal_dates) > 0 else date(2000, 1, 1)
+        # 取已有日历的最后一个日期；若不存在或为空，则使用 date(2000, 1, 1)
+        old_cal_end = cal_dates[-1] if cal_dates and len(cal_dates) > 0 else date(2000, 1, 1)
+        self._log(f"[INFO] 现有日历：{first_date} ~ {old_cal_end}，共 {len(cal_dates)} 个交易日")
 
         if self._cancelled:
             return self._cancel_exit()
@@ -211,7 +201,7 @@ class YFinanceCollectorWorker(QRunnable):
             # 保持 threads 设置 和 _process_batch 中 download 一致
             # 否则容易造成崩溃
             df = yf.download(
-                CALENDAR_REF_TICKER,
+                _get_calendar_ref_ticker(),
                 start=f"{start}", #.strftime("%Y-%m-%d"),
                 end=f"{end}", #.strftime("%Y-%m-%d"),
                 auto_adjust=False,
@@ -244,15 +234,17 @@ class YFinanceCollectorWorker(QRunnable):
             for d in to_write:
                 f.write(f"\n{d}") #.strftime('%Y-%m-%d')
 
-    # ── 股票列表 ─────────────────────────────────────────────
+    def unique_list(self, seq):
+        seen = set()
+        return [x for x in seq if not (x in seen or seen.add(x))]
 
-    @staticmethod
-    def _normalize_ticker(ticker: str) -> str:
-        """标准化 ticker：将 Qlib 格式（BRK.B）转换为 yfinance 格式（BRK-B）"""
-        return ticker.replace(".", "-")
+    # ── 股票列表 ─────────────────────────────────────────────
 
     def _get_tickers(self) -> list[str]:
         """从 instruments/ 文件读取股票列表，如不存在则使用内置列表"""
+        from core.app_state import get_state
+        reg = get_state().reg
+        QLIB_DATA_DIR = _find_data_dir()
         inst_file = QLIB_DATA_DIR / "instruments" / f"{self.scope}.txt"
         if inst_file.exists():
             lines = inst_file.read_text().strip().split("\n")
@@ -260,9 +252,9 @@ class YFinanceCollectorWorker(QRunnable):
             for line in lines:
                 parts = line.split("\t")
                 if parts:
-                    t = self._normalize_ticker(parts[0].strip().upper())
-                    if t and not t.startswith("^"):
-                        tickers.append(t)
+                    t = _normalize_ticker(parts[0].strip().upper(), reg)
+                    #if t and not t.startswith("^"):
+                    tickers.append(t)
             if tickers:
                 return tickers
 

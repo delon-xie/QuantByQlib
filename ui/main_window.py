@@ -169,7 +169,7 @@ class MainWindow(QMainWindow):
 
         # 选股运行（由 screening_page 触发，_pages 仍保存 page 实例）
         screening_page: ScreeningPage = self._pages["screening"]
-        #screening_page.run_requested.connect(self._on_run_screening)
+        screening_page.run_requested.connect(self._on_run_screening)
 
         # 个股详情（仪表盘搜索 / 选股结果点击 → 导航到结果页并加载面板）
         bus.show_ticker_detail.connect(self._on_show_ticker_detail)

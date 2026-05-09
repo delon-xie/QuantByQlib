@@ -19,17 +19,27 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThreadPool
 from PyQt6.QtGui import QColor
 from ui.theme import COLORS
-
+from core.app_state import get_state
+from ui.components.instrument_combobox import InstrumentComboBox
 
 class ConfigPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._state = get_state()
         self._download_worker = None
         self._test_worker = None
         self._collect_worker = None
         self._setup_ui()
         self._load_saved_keys()
         self._refresh_qlib_status()
+
+    def _on_collect_clicked(self):
+        instrument = self._instrument_combo.currentText()
+        if not instrument:
+            return "all"
+
+        # 复用你原来的逻辑
+        self._on_collect(instrument)
 
     def _setup_ui(self) -> None:
         # 外层滚动区（内容较多）
@@ -266,25 +276,54 @@ class ConfigPage(QWidget):
 
         # 按钮行
         col_btn_row = QHBoxLayout()
-        self._col_sp500_btn = QPushButton("⬇️ 采集 S&P 500（推荐）")
-        self._col_sp500_btn.setMinimumHeight(38)
-        self._col_sp500_btn.setToolTip(
-            "从 Yahoo Finance 采集 S&P 500 约 503 支股票最新日频数据\n"
-            "追加写入 Qlib 二进制格式，历史数据不会被覆盖\n"
-            "预计 1-2 分钟（取决于网络速度）"
+        # ---- 下拉框 ----
+        self._instrument_combo = InstrumentComboBox()
+        self._instrument_combo.setMinimumHeight(38)
+        self._instrument_combo.setPlaceholderText("请选择采集范围")
+        self._instrument_combo.setToolTip(
+            "选择股票范围：\n"
+            f"从 {get_state().reg}_data/instruments 选择txt文件作为股票范围\n"
+            "默认选择（all）全部股票：采集所有股票的最新数据（耗时较长）\n"
         )
-        self._col_sp500_btn.clicked.connect(lambda: self._on_collect("sp500"))
-        col_btn_row.addWidget(self._col_sp500_btn)
 
-        self._col_ndx_btn = QPushButton("⬇️ 采集 Nasdaq 100")
-        self._col_ndx_btn.setObjectName("btn_secondary")
-        self._col_ndx_btn.setMinimumHeight(38)
-        self._col_ndx_btn.setToolTip(
-            "从 Yahoo Finance 采集 Nasdaq 100 约 100 支股票最新日频数据\n"
-            "预计 20-40 秒"
-        )
-        self._col_ndx_btn.clicked.connect(lambda: self._on_collect("nasdaq100"))
-        col_btn_row.addWidget(self._col_ndx_btn)
+        # ---- 采集按钮 ----
+        self._col_collect_btn = QPushButton("⬇️ 采集（选中范围）")
+        self._col_collect_btn.setObjectName("btn_primary")
+        self._col_collect_btn.setMinimumHeight(38)
+        self._col_collect_btn.clicked.connect(self._on_collect_clicked)
+
+        col_btn_row.addWidget(self._instrument_combo, 2)
+        col_btn_row.addWidget(self._col_collect_btn, 2)
+        
+        #self._col_sp500_btn = QPushButton("⬇️ 采集 S&P 500（推荐）")
+        #self._col_sp500_btn.setMinimumHeight(38)
+        #self._col_sp500_btn.setToolTip(
+        #    "从 Yahoo Finance 采集 S&P 500 约 503 支股票最新日频数据\n"
+        #    "追加写入 Qlib 二进制格式，历史数据不会被覆盖\n"
+        #    "预计 1-2 分钟（取决于网络速度）"
+        #)
+        #self._col_sp500_btn.clicked.connect(lambda: self._on_collect("sp500"))
+        #col_btn_row.addWidget(self._col_sp500_btn)
+
+        #self._col_ndx_btn = QPushButton("⬇️ 采集 Nasdaq 100")
+        #self._col_ndx_btn.setObjectName("btn_secondary")
+        #self._col_ndx_btn.setMinimumHeight(38)
+        #self._col_ndx_btn.setToolTip(
+        #    "从 Yahoo Finance 采集 Nasdaq 100 约 100 支股票最新日频数据\n"
+        #    "预计 20-40 秒"
+        #)
+        #col_btn_row.addWidget(self._col_ndx_btn)
+        
+        #self._col_all_btn = QPushButton("⬇️ 采集全部股票")
+        #self._col_all_btn.setObjectName("btn_secondary")
+        #self._col_all_btn.setMinimumHeight(38)
+        #self._col_all_btn.setToolTip(
+        #    "从 Yahoo Finance 采集 全部 9000 余支股票最新日频数据\n"
+        #    "追加写入 Qlib 二进制格式，历史数据不会被覆盖\n"
+        #    "预计 10-20 分钟（取决于网络速度）"
+        #)
+        #self._col_all_btn.clicked.connect(lambda: self._on_collect("all"))
+        #col_btn_row.addWidget(self._col_all_btn)
 
         self._col_cancel_btn = QPushButton("⏹ 取消")
         self._col_cancel_btn.setObjectName("btn_danger")
@@ -303,12 +342,12 @@ class ConfigPage(QWidget):
         export_layout.setColumnStretch(1, 1)
 
         export_dirs = [
-            ("根目录：",       "TRADING_JOURNAL_DIR",  "~/美股交易日记",         "K线图/信号/政体/回测等所有导出文件的根目录"),
+            ("根目录：",       "TRADING_JOURNAL_DIR",  f"~/{self._state.reg_name}交易日记",         "K线图/信号/政体/回测等所有导出文件的根目录"),
             ("K线图目录：",    "EXPORT_PICS_DIR",      "（默认：根目录/pics）",   "每日导出 K线图 PNG 的存放目录"),
             ("信号CSV目录：",  "EXPORT_SIGNALS_DIR",   "（默认：根目录/signals）","策略选股信号 CSV 的存放目录"),
             ("HMM政体目录：",  "EXPORT_REGIME_DIR",    "（默认：根目录/regime）", "HMM 市场政体 JSON 的存放目录"),
             ("回测报告目录：", "EXPORT_BACKTEST_DIR",  "（默认：根目录/backtest）","月度回测绩效 JSON 的存放目录"),
-            ("AI报告目录：",   "REPORTS_DIR",          "~/Documents/美股交易日记/reports", "AI 分析报告和每日摘要 MD 文件的存放目录"),
+            ("AI报告目录：",   "REPORTS_DIR",          f"~/Documents/{self._state.reg_name}交易日记/reports", "AI 分析报告和每日摘要 MD 文件的存放目录"),
         ]
 
         self._export_dir_inputs: dict[str, QLineEdit] = {}
@@ -527,9 +566,9 @@ class ConfigPage(QWidget):
         """启动 Qlib 数据下载 Worker"""
         confirm = QMessageBox.question(
             self, "确认下载",
-            "将从 SunsetWolf/qlib_dataset 下载美股 Qlib 数据集（真正的美股日频数据）。\n"
-            "文件约 450MB zip，解压后约 1.5GB，耗时约 5-15 分钟（取决于网速）。\n\n"
-            "下载完成后 LightGBM/LSTM/GRU 量化模型即可正常使用。\n\n"
+            f"将从 SunsetWolf/qlib_dataset 下载{self._state.reg_name} Qlib 数据集（真正的{self._state.reg_name}日频数据）。\n"
+            f"文件约 450MB zip，解压后约 1.5GB，耗时约 5-15 分钟（取决于网速）。\n\n"
+            f"下载完成后 LightGBM/LSTM/GRU 量化模型即可正常使用。\n\n"
             "确认开始下载？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
@@ -538,7 +577,7 @@ class ConfigPage(QWidget):
 
         self._set_download_running(True)
         self._download_log.clear()
-        self._append_log(f"[INFO] 开始下载美股 Qlib 数据集（SunsetWolf/qlib_dataset）...")
+        self._append_log(f"[INFO] 开始下载{self._state.reg_name} Qlib 数据集（SunsetWolf/qlib_dataset）...")
 
         from workers.qlib_downloader import QlibDownloadWorker
         worker = QlibDownloadWorker(scope=scope)
@@ -557,16 +596,16 @@ class ConfigPage(QWidget):
         """重新下载最新美股 Qlib 数据集（SunsetWolf/qlib_dataset）"""
         confirm = QMessageBox.question(
             self, "确认更新",
-            "将从 SunsetWolf/qlib_dataset 重新下载美股 Qlib 数据集。\n"
-            "约 450MB zip，解压后替换本地数据，Qlib ML 模型将可正常使用。\n\n"
-            "确认开始下载？",
+            f"将从 SunsetWolf/qlib_dataset 重新下载{self._state.reg_name} Qlib 数据集。\n"
+            f"约 450MB zip，解压后替换本地数据，Qlib ML 模型将可正常使用。\n\n"
+            f"确认开始下载？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if confirm != QMessageBox.StandardButton.Yes:
             return
         self._set_download_running(True)
         self._download_log.clear()
-        self._append_log("[INFO] 开始更新美股 Qlib 数据集（SunsetWolf/qlib_dataset）...")
+        self._append_log(f"[INFO] 开始更新{self._state.reg_name} Qlib 数据集（SunsetWolf/qlib_dataset）...")
 
         from workers.qlib_downloader import QlibUpdateWorker
         worker = QlibUpdateWorker()
@@ -633,7 +672,15 @@ class ConfigPage(QWidget):
 
     def _on_collect(self, scope: str) -> None:
         """启动 yfinance 数据采集 Worker"""
-        scope_name = "S&P 500（约 503 支）" if scope == "sp500" else "Nasdaq 100（约 100 支）"
+        # 根据scope参数确定scope_name的值
+        if scope == "sp500":
+            scope_name = "S&P 500（约 503 支）"
+        elif scope == "nasdaq100":
+            scope_name = "Nasdaq 100（约 100 支）"
+        elif scope == "all":
+            scope_name = "全部股票（约 9000 支）"
+        else:
+            scope_name = "未知范围"
         confirm = QMessageBox.question(
             self, "确认采集",
             f"将从 Yahoo Finance 采集 {scope_name} 最新日频数据。\n"
@@ -692,8 +739,8 @@ class ConfigPage(QWidget):
         self._collect_worker = None
 
     def _set_collect_running(self, running: bool) -> None:
-        self._col_sp500_btn.setEnabled(not running)
-        self._col_ndx_btn.setEnabled(not running)
+        self._instrument_combo.setEnabled(not running)
+        self._col_collect_btn.setEnabled(not running)
         self._col_cancel_btn.setVisible(running)
         self._collect_progress.setVisible(running)
         if running:

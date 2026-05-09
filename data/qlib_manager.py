@@ -34,9 +34,8 @@ def init_qlib(provider_uri: Optional[str] = None) -> bool:
     QLIB_DATA_DIR = _find_data_dir()
     uri = provider_uri or str(QLIB_DATA_DIR)
     try:
-        import qlib
-        from qlib.constant import REG_US
-        qlib.init(provider_uri=uri, region=REG_US)
+        from core.qlibhelper import qlib_safeinit
+        qlib_safeinit(uri)
         #logger.info(f"Qlib 初始化成功：{uri}")
     except Exception as e:
         msg = str(e)

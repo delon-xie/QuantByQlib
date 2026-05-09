@@ -65,9 +65,8 @@ def check_qlib_data() -> None:
     data_path = Path.home() / ".qlib" / "qlib_data" / "us_data"
     if data_path.exists() and any(data_path.iterdir()):
         try:
-            import qlib
-            from qlib.constant import REG_US
-            qlib.init(provider_uri=str(data_path), region=REG_US)
+            from core.qlibhelper import qlib_safeinit
+            qlib_safeinit(uri)
             ok(f"Qlib 数据已就绪：{data_path}")
         except Exception as e:
             warn(f"Qlib 数据目录存在但初始化失败：{e}")

@@ -9,12 +9,16 @@ from typing import Optional
 
 from PyQt6.QtCore import QRunnable, QObject, pyqtSignal, pyqtSlot
 from loguru import logger
+from core.app_state import get_state
+from workers.yfinance_collector import _find_data_dir, _normalize_ticker
+
 
 
 class ScreeningSignals(QObject):
     progress  = pyqtSignal(int, str)      # pct, message
     completed = pyqtSignal(list)          # list[dict] 选股结果
     failed    = pyqtSignal(str)           # error message
+    log       = pyqtSignal(str)           # warning message
 
 
 class ScreeningWorker(QRunnable):
@@ -27,15 +31,46 @@ class ScreeningWorker(QRunnable):
 
     def __init__(self,
                  strategy_key: str,
+                 instrument_range: str,
                  topk: Optional[int] = None,
                  universe: Optional[list[str]] = None):
         super().__init__()
         self.strategy_key = strategy_key
+        self.scope        = instrument_range
+        self.strategy_key = strategy_key
         self.topk         = topk
         self.universe     = universe
+        if universe is None:
+            self.universe = self._get_tickers()
         self.signals      = ScreeningSignals()
         self._cancelled   = False
+        self.state = get_state()
         self.setAutoDelete(True)
+
+    def unique_list(self, seq):
+        seen = set()
+        return [x for x in seq if not (x in seen or seen.add(x))]
+    
+    def _get_tickers(self) -> list[str]:
+        """从 instruments/ 文件读取股票列表，如不存在则使用内置列表"""
+        from core.app_state import get_state
+        reg = get_state().reg
+        QLIB_DATA_DIR = _find_data_dir()
+        inst_file = QLIB_DATA_DIR / "instruments" / f"{self.scope}.txt"
+        if inst_file.exists():
+            lines = inst_file.read_text().strip().split("\n")
+            tickers = []
+            for line in lines:
+                parts = line.split("\t")
+                if parts:
+                    t = _normalize_ticker(parts[0].strip().upper(), reg)
+                    if t and not t.startswith("^"):
+                        tickers.append(t)
+            if tickers:
+                tickers = self.unique_list(tickers)
+                return tickers
+        else:
+            return []
 
     def cancel(self) -> None:
         """请求取消（在下一个检查点生效）"""
@@ -44,7 +79,7 @@ class ScreeningWorker(QRunnable):
 
     @pyqtSlot()
     def run(self) -> None:
-        logger.info(f"ScreeningWorker 开始：strategy={self.strategy_key}，topk={self.topk}")
+        logger.info(f"ScreeningWorker 开始：strategy={self.strategy_key}，范围={self.scope}，topk={self.topk}")
 
         def progress_cb(pct: int, msg: str):
             if self._cancelled:
@@ -73,8 +108,8 @@ class ScreeningWorker(QRunnable):
             try:
                 from core.event_bus import get_event_bus
                 bus = get_event_bus()
-                bus.screening_completed.emit(results)
-            except Exception:
+            except Exception as ex:
+                self.signals.log.emit(f"事件提交异常 [{self.strategy_key}] （非致命）：{ex}")
                 pass
 
             # 自动写入规范化信号 CSV 到「美股交易日记/signals/」
@@ -84,11 +119,10 @@ class ScreeningWorker(QRunnable):
                     else export_signals_empty(self.strategy_key)
                 logger.info(f"ScreeningWorker [{self.strategy_key}] 信号 CSV → {sig_path}")
             except Exception as ex:
-                logger.warning(
-                    f"ScreeningWorker [{self.strategy_key}] 信号 CSV 写入失败（非致命）：{ex}"
-                )
+                self.signals.log.emit(f"ScreeningWorker [{self.strategy_key}] 信号 CSV 写入失败（非致命）：{ex}")
 
             logger.info(f"ScreeningWorker [{self.strategy_key}] 完成，{len(results)} 支")
+            bus.screening_completed.emit(results)
 
         except InterruptedError as e:
             self.signals.failed.emit(str(e))
