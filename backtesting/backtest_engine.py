@@ -17,6 +17,8 @@ from backtesting.performance_metrics import (
     BacktestMetrics, calc_metrics_from_returns
 )
 
+from core.model_helper import get_model
+
 
 @dataclass
 class BacktestConfig:
@@ -80,7 +82,7 @@ class BacktestEngine:
             )
             from screening.stock_screener import StockScreener
 
-            # 核心蓝筹宇宙
+            # 核心蓝筹股票池
             screener = StockScreener()
             universe = screener._from_qlib() or screener._sp500_fallback()
             universe = [t for t in universe if isinstance(t, str) and t.strip()]
@@ -103,6 +105,9 @@ class BacktestEngine:
             # 通过临时调用 run() 的方式太重，直接按策略 key 定义对应的 factory
             def model_factory():
                 key = config.strategy_key
+                return get_model(key)
+                
+                # 废弃：直接在 main.py 定义 MODEL_REGISTRY 和 get_model()，避免重复代码和潜在不一致
                 if key == "growth_stocks":
                     from qlib.contrib.model.gbdt import LGBModel
                     return LGBModel(
@@ -253,7 +258,7 @@ class BacktestEngine:
 
         from screening.stock_screener import StockScreener
         screener = StockScreener()
-        universe = screener._sp500_fallback()   # ~100 支大盘股宇宙
+        universe = screener._sp500_fallback()   # ~100 支大盘股股票池
 
         # ── 1. 选股阶段：用回测开始日前 6 个月数据打分 ──────────
         score_end   = config.start_date
@@ -263,9 +268,9 @@ class BacktestEngine:
         score_prices = self._fetch_prices_batch(universe, score_start, score_end)
 
         if score_prices is None or score_prices.empty:
-            # 选股窗口无数据时退化为全宇宙等权
+            # 选股窗口无数据时退化为全股票池等权
             selected = universe[:config.topk]
-            logger.warning("选股窗口数据不足，使用全宇宙等权")
+            logger.warning("选股窗口数据不足，使用全股票池等权")
         else:
             selected = self._select_by_strategy(
                 score_prices, config.strategy_key, config.topk
@@ -426,9 +431,9 @@ class BacktestEngine:
         try:
             import yfinance as yf
             # yfinance 一次下载所有 ticker，速度远快于逐一下载
-            tickers_str = " ".join(tickers)
+            # tickers_str = " ".join(tickers)
             df_all = yf.download(
-                tickers_str,
+                tickers,
                 start=start,
                 end=end,
                 progress=False,

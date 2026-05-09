@@ -271,6 +271,14 @@ graph TD
 
 ---
 
+## 量化选股 - 策略回测
+
+![backtest](images/backtest.png)
+
+![backtest](images/backtest2.png)
+
+---
+
 ## 量化选股 - 配置下载数据
 
 ![config download](images/config_download.png)
