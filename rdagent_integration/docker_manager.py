@@ -155,11 +155,13 @@ class DockerManager:
     def start_container(self,
                         env_vars: dict[str, str],
                         workspace_dir: str,
+                        reg: str,
                         log_cb=None) -> tuple[bool, str]:
         """
         启动 RD-Agent 容器。
         env_vars:      传入容器的环境变量（含 LLM keys）
         workspace_dir: 宿主机工作目录（挂载为 /workspace）
+        reg:           指定数据的{reg}拼接
         log_cb:        callable(msg: str) 实时接收启动日志
 
         Returns: (success, error_message)
@@ -179,11 +181,27 @@ class DockerManager:
         try:
             import os
             from pathlib import Path
+            
+            # ---------- 关键：挂载 scripts 目录 ----------
+            project_root = Path(__file__).resolve().parent.parent
+            logger.info(f"project_root : {project_root}")
+            scripts_path = Path(f"{project_root}/scripts/run_factor_discovery.py")
+            logger.info(f"scripts_path : {scripts_path}")
+            core_path = Path(f"{project_root}/core")
+            logger.info(f"core_path : {core_path}")
+        
             volumes = {
-                workspace_dir: {"bind": "/workspace", "mode": "rw"},
+                scripts_path: {"bind": "/workspace/run_factor_discovery.py", "mode": "rw"},
+                f"{project_root}/core": {"bind": "/workspace/core", "mode": "rw"},
+                f"{project_root}/log": {"bind": "/workspace/log", "mode": "rw"},
+                f"{Path.home()}/.qlib/qlib_data": {"bind": "/root/.qlib/qlib_data", "mode": "rw"},
+                
+                # ✅ 实时挂载 run_factor_discovery.py（不依赖镜像编译，实时可以修改，放弃原有workspace 执行逻辑）
+                #core_path: {"bind": "/app/core", "mode": "rw"},
+                #str(scripts_path): {"bind": "/app/run_factor_discovery.py", "mode": "ro"},
             }
             # 如果宿主机有 qlib 数据，挂载进容器供 IC 验证使用
-            qlib_data = Path.home() / ".qlib" / "qlib_data"
+            qlib_data = Path(f"{Path.home()}/.qlib/qlib_data")
             if qlib_data.exists():
                 volumes[str(qlib_data)] = {"bind": "/root/.qlib/qlib_data", "mode": "ro"}
 
@@ -195,7 +213,15 @@ class DockerManager:
                 detach=True,
                 remove=False,           # 保留容器方便查看日志
                 network_mode="host",    # 容器直接使用宿主机网络
-                command="python /workspace/run_factor_discovery.py",
+                command=[
+                        "python",
+                        #"/app/run_factor_discovery.py",
+                        "/workspace/run_factor_discovery.py",
+                        "--provider",
+                        "deepseek",
+                        "--reg",
+                        reg,
+                ],
             )
             if PLATFORM:
                 run_kwargs["platform"] = PLATFORM

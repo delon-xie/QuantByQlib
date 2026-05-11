@@ -16,7 +16,7 @@ from pathlib import Path
 DATA_URL = (
     "https://github.com/SunsetWolf/qlib_dataset/releases/download/v2/qlib_data_us_1d_latest.zip"
 )
-SUNSETWOLF_US_DATA_SIZE_MB = 450
+DATA_SIZE_MB = 450
 
 
 class DownloadSignals(QObject):
@@ -259,8 +259,8 @@ class QlibDownloadWorker(QRunnable):
         DATA_URL = self._get_data_url(reg)
         url = DATA_URL
         self.signals.log_line.emit(f"[INFO] 下载地址：{url}")
-        self.signals.log_line.emit(f"[INFO] 文件大小：约 {SUNSETWOLF_US_DATA_SIZE_MB} MB，请耐心等待...")
-        self.signals.progress.emit(5, f"正在下载美股 Qlib 数据集（约 {SUNSETWOLF_US_DATA_SIZE_MB} MB）...")
+        self.signals.log_line.emit(f"[INFO] 文件大小：约 {DATA_SIZE_MB} MB，请耐心等待...")
+        self.signals.progress.emit(5, f"正在下载美股 Qlib 数据集（约 {DATA_SIZE_MB} MB）...")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             if url.endswith(".zip"):
@@ -330,7 +330,7 @@ class QlibDownloadWorker(QRunnable):
             self.signals.progress.emit(93, "检查解压结果...")
 
             # 找到解压后含 features/ 的子目录（zip 内层目录名不固定）
-            US_DATA_ITEMS = ["features", "calendars", "instruments"]
+            DATA_ITEMS = ["features", "calendars", "instruments"]
             extracted_dir = None
 
             # 先看 extract_tmp 下有无直接的 features/（zip 无子目录结构）
@@ -352,7 +352,7 @@ class QlibDownloadWorker(QRunnable):
 
             # 备份旧数据，将新数据的各子目录移入 FIXED_TARGET_DIR
             self.signals.log_line.emit(f"[INFO] 正在将数据写入 {FIXED_TARGET_DIR}...")
-            for item_name in US_DATA_ITEMS:
+            for item_name in DATA_ITEMS:
                 src = extracted_dir / item_name
                 dst = FIXED_TARGET_DIR / item_name
                 if not src.exists():
@@ -546,7 +546,7 @@ class QlibUpdateWorker(QRunnable):
             self.signals.progress.emit(93, "检查解压结果...")
             self.signals.log_line.emit("[INFO] 解压完成，检查目录结构...")
 
-            US_DATA_ITEMS = ["features", "calendars", "instruments"]
+            DATA_ITEMS = ["features", "calendars", "instruments"]
             extracted_dir = None
 
             if (extract_tmp / "features").exists():
@@ -566,7 +566,7 @@ class QlibUpdateWorker(QRunnable):
 
             # 将各子目录移入 FIXED_TARGET_DIR
             self.signals.log_line.emit(f"[INFO] 正在将数据写入 {FIXED_TARGET_DIR}...")
-            for item_name in US_DATA_ITEMS:
+            for item_name in DATA_ITEMS:
                 src = extracted_dir / item_name
                 dst = FIXED_TARGET_DIR / item_name
                 if not src.exists():

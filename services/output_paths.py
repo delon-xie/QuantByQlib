@@ -27,10 +27,12 @@ from pathlib import Path
 
 # ── 根目录（可通过环境变量覆盖）────────────────────────────────────────────
 def _resolve_root() -> Path:
+    from core.app_state import get_state
+    reg_name = get_state().reg_name
     env = os.environ.get("TRADING_JOURNAL_DIR", "").strip()
     if env:
         return Path(env).expanduser().resolve()
-    return Path.home() / "美股交易日记"
+    return Path.home() / f"{reg_name}交易日记"
 
 
 def _resolve_subdir(env_key: str, default_name: str) -> Path:
@@ -77,12 +79,14 @@ def get_reports_dir() -> Path:
     返回 AI 分析报告根目录（默认 ~/Documents/美股交易日记/reports/）
     可通过环境变量 REPORTS_DIR 覆盖。
     """
+    from core.app_state import get_state
+    reg_name = get_state().reg_name
     env = os.environ.get("REPORTS_DIR", "").strip()
     if env:
         d = Path(env).expanduser().resolve()
     else:
         # 默认：~/Documents/美股交易日记/reports
-        d = Path.home() / "Documents" / "美股交易日记" / "reports"
+        d = Path.home() / "Documents" / f"{reg_name}交易日记" / "reports"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

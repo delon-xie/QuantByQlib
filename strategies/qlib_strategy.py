@@ -28,7 +28,7 @@ def _get_qlib_data_end_date(market: Literal["us", "cn", "hk", "tw", "jp", "kr", 
     """
     检测 Qlib 股票市场数据中最新可用交易日。
     直接读 calendars/day.txt 末尾行，不依赖 D.features 也不依赖 app_state。
-    使用 qlib_manager._find_us_data_dir() 自动定位正确的美股数据目录。
+    使用 qlib_manager._find_data_dir() 自动定位正确的美股数据目录。
     """
     try:
         from data.qlib_manager import _find_data_dir

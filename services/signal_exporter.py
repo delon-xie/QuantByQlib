@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Optional
 
 from loguru import logger
+from utils.csvhelper import _write_csv
 
 
 # ── 策略编号映射 ────────────────────────────────────────────────────────────
@@ -139,10 +140,3 @@ _FIELDNAMES = [
     "symbol", "score", "direction", "rank",
     "signal_strength", "universe_size", "strategy_id", "date",
 ]
-
-
-def _write_csv(path: Path, rows: list[dict]) -> None:
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=_FIELDNAMES)
-        writer.writeheader()
-        writer.writerows(rows)

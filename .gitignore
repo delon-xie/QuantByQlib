@@ -20,6 +20,7 @@ env/
 
 # binance data downloaders
 binance_data/
+scripts/core
 
 # IDE
 .vscode/

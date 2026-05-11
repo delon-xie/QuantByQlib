@@ -14,6 +14,7 @@ from __future__ import annotations
 import sys
 import os
 from pathlib import Path
+from core.qlibhelper import qlib_safeinit, _get_accepted_region
 
 # ── 颜色输出 ──────────────────────────────────────────────────
 GREEN  = "\033[92m"
@@ -61,12 +62,15 @@ def check_packages() -> None:
 
 
 def check_qlib_data() -> None:
+    from core.app_state import get_state
+    reg = _get_accepted_region(get_state().reg)
+    reg_name = get_state().reg_name
     print("\n[3] Qlib 数据")
-    data_path = Path.home() / ".qlib" / "qlib_data" / "us_data"
+    data_path = Path(f"{Path.home()}/.qlib/qlib_data/{reg}_data")
     if data_path.exists() and any(data_path.iterdir()):
         try:
             from core.qlibhelper import qlib_safeinit
-            qlib_safeinit(uri)
+            qlib_safeinit(data_path)
             ok(f"Qlib 数据已就绪：{data_path}")
         except Exception as e:
             warn(f"Qlib 数据目录存在但初始化失败：{e}")
@@ -75,15 +79,15 @@ def check_qlib_data() -> None:
              f"     → 应用将以降级模式运行\n"
              f"     → 下载命令：python3 -c \""
              f"from qlib.tests.data import GetData; "
-             f"GetData().qlib_data(target_dir='~/.qlib/qlib_data/us_data', region='us')\"")
+             f"GetData().qlib_data(target_dir='~/.qlib/qlib_data/{reg}_data', region='{reg}')\"")
 
 
 def check_api_keys() -> None:
     print("\n[4] API Key 配置")
 
     # 加载 .env
-    root = Path(__file__).parent.parent
-    env_file = root / ".env"
+    rootPath = Path(__file__).parent.parent
+    env_file = Path("{rootPath}/.env")
     if env_file.exists():
         try:
             from dotenv import load_dotenv

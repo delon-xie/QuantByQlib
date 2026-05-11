@@ -43,7 +43,8 @@ class AppState:
 
     # ── 配置路径 ─────────────────────────────────────────────
     config_dir: Path = field(default_factory=lambda: Path("config"))
-    data_dir: Path = field(default_factory=lambda: Path.home() / ".quantbyqlib")
+    
+    data_dir: Path = field(default_factory=lambda: Path(f"{Path.home()}/.quantbyqlib"))
 
 
 # 模块级单例

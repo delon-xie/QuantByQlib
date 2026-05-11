@@ -22,10 +22,37 @@ pip install -r requirements.txt
 
 # 创建镜像
 chmod +x scripts/build_docker_deepseek.sh
+# run docker desktop first
 ./scripts/build_docker_deepseek.sh
 
+# 测试镜像
+export OPENAI_API_KEY="sk-xxxx"
+export ANTHROPIC_API_KEY="sk-ant-xxxx"
+export DEEPSEEK_API_KEY="xxxx"
+export GOOGLE_API_KEY="xxxx"
 chmod +x scripts/run_docker.sh
 ./scripts/run_docker.sh
+
+# 测试容器时，先注释掉 run_docker.sh 的python语句
+# python /workspace/run_factor_discovery.py --provider deepseek --reg cn
+# 以及 Dockfile 的
+# CMD ["python", "/workspace/run_factor_discovery.py --provider deepseek --reg cn"] 带参数 provider
+
+#ENTRYPOINT ["python", "/workspace/run_factor_discovery.py"]
+#CMD ["--provider", "deepseek", "--reg", "cn"]
+
+#进入容器内部 python cli >>>
+import sys
+sys.argv = ["run_factor_discovery.py", "--provider", "deepseek", "--reg", "cn"]
+
+import run_factor_discovery
+run_factor_discovery.main()
+
+#测试容器内部是否正常执行，然后切换到完整构建
+
+
+cd scripts
+ln -s ./../core core
 
 #使用挂载保持 py 是最新状态
 #容器缺 run_factor_discovery.py

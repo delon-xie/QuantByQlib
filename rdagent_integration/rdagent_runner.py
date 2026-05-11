@@ -12,6 +12,7 @@ from typing import Optional
 from loguru import logger
 
 from rdagent_integration.docker_manager import get_docker_manager
+from core.app_state import get_state
 
 
 # 默认工作目录（宿主机，挂载进容器）
@@ -102,9 +103,14 @@ class RDAgentRunner:
 
         # 5. 启动容器
         self._log_cb("[INFO] 正在启动 RD-Agent 容器...")
+        reg = get_state().reg
+        self._log_cb("[INFO] reg : {reg}")
+        self._log_cb("[INFO] env : {env}")
+        self._log_cb("[INFO] _workspace : {str(self._workspace)}")
         ok, err = mgr.start_container(
             env_vars=env,
             workspace_dir=str(self._workspace),
+            reg = reg
         )
         if not ok:
             self._log_cb(f"[ERROR] 容器启动失败：{err}")

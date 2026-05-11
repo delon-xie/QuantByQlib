@@ -148,8 +148,8 @@ class StockScreener:
         再补充其他有效股票，过滤退市/数据稀少的股票。
         """
         try:
-            from data.qlib_manager import _find_us_data_dir
-            data_dir = _find_us_data_dir()
+            from data.qlib_manager import _find_data_dir
+            data_dir = _find_data_dir()
         except Exception:
             from pathlib import Path
             data_dir = Path.home() / ".qlib" / "qlib_data"

@@ -94,7 +94,7 @@ class LLMReportGenerator:
             )
             return response.content[0].text
         except Exception as e:
-            logger.error(f"[LLMReport] {report.ticker} 报告生成失败：{e}")
+            logger.warning(f"[LLMReport] {report.ticker} 报告生成失败：{e}")
             return f"_AI 报告生成失败：{e}_\n\n请检查 ANTHROPIC_API_KEY 是否已配置。"
 
     def generate_stream(self, report: "StockReport") -> Iterator[str]:
@@ -124,15 +124,17 @@ class LLMReportGenerator:
                     f"[LLMReport] Claude 不可用（{e}），自动切换到 DeepSeek..."
                 )
             else:
-                logger.error(f"[LLMReport] Claude 报告生成失败：{e}")
-                raise   # 非过载错误（如 Key 错误），直接抛出，不降级
+                logger.warning(f"[LLMReport] Claude 报告生成失败：{e}")
+                #key错误 也进行降级
+                #raise   # 非过载错误（如 Key 错误），直接抛出，不降级
 
         # ── 降级到 DeepSeek ──
-        yield "\n\n> ⚠️ Claude 服务暂时不可用，已自动切换到 DeepSeek 生成报告...\n\n"
+        #yield "\n\n> ⚠️ Claude 服务暂时不可用，已自动切换到 DeepSeek 生成报告...\n\n"
+        logger.warning(f"[LLMReport] ⚠️ Claude 服务暂时不可用，已自动切换到 DeepSeek 生成报告...")
         try:
             yield from self._stream_deepseek(prompt)
         except Exception as ds_err:
-            logger.error(f"[LLMReport] DeepSeek 也失败了：{ds_err}")
+            logger.warning(f"[LLMReport] DeepSeek 也失败了：{ds_err}")
             # 两个都失败，把原始 Claude 错误抛出
             raise claude_err from ds_err
 

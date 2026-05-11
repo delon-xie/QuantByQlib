@@ -6,8 +6,8 @@ factor_injector 单元测试
 关键技术说明：
   factor_injector.py 内所有外部依赖均为函数内延迟导入（lazy import），
   patch 路径必须是其原始模块，例如：
-    "data.qlib_manager._find_us_data_dir"  而非
-    "strategies.factor_injector._find_us_data_dir"
+    "data.qlib_manager._find_data_dir"  而非
+    "strategies.factor_injector._find_data_dir"
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ class TestValidateFactor(unittest.TestCase):
         return mock
 
     def _make_data_dir_mock(self, cal_mock):
-        """模拟 _find_us_data_dir() 返回的 data_dir 对象"""
+        """模拟 _find_data_dir() 返回的 data_dir 对象"""
         # data_dir / "calendars" / "day.txt"
         cal_dir = MagicMock()
         cal_dir.__truediv__ = MagicMock(return_value=cal_mock)
@@ -82,7 +82,7 @@ class TestValidateFactor(unittest.TestCase):
         mock_D.features.side_effect = [factor_df, ret_df]
 
         with patch("qlib.data.D", mock_D), \
-             patch("data.qlib_manager._find_us_data_dir", return_value=data_dir):
+             patch("data.qlib_manager._find_data_dir", return_value=data_dir):
             from strategies.factor_injector import validate_factor
             result = validate_factor(
                 "Ref($close,5)/$close-1",
@@ -114,7 +114,7 @@ class TestValidateFactor(unittest.TestCase):
         mock_D.features.side_effect = [factor_df, ret_df]
 
         with patch("qlib.data.D", mock_D), \
-             patch("data.qlib_manager._find_us_data_dir", return_value=data_dir):
+             patch("data.qlib_manager._find_data_dir", return_value=data_dir):
             from strategies.factor_injector import validate_factor
             result = validate_factor(
                 "random_noise",
@@ -129,7 +129,7 @@ class TestValidateFactor(unittest.TestCase):
         cal_mock.exists.return_value = False
         data_dir = self._make_data_dir_mock(cal_mock)
 
-        with patch("data.qlib_manager._find_us_data_dir", return_value=data_dir):
+        with patch("data.qlib_manager._find_data_dir", return_value=data_dir):
             from strategies.factor_injector import validate_factor
             result = validate_factor("$close", ["aapl"], threshold_ic=0.03)
         self.assertFalse(result)
@@ -139,7 +139,7 @@ class TestValidateFactor(unittest.TestCase):
         cal_mock = self._make_cal_path_mock(n_dates=10)  # 远少于 252+5
         data_dir = self._make_data_dir_mock(cal_mock)
 
-        with patch("data.qlib_manager._find_us_data_dir", return_value=data_dir):
+        with patch("data.qlib_manager._find_data_dir", return_value=data_dir):
             from strategies.factor_injector import validate_factor
             result = validate_factor("$close", ["aapl"], threshold_ic=0.03)
         self.assertFalse(result)
@@ -153,7 +153,7 @@ class TestValidateFactor(unittest.TestCase):
         mock_D.features.side_effect = RuntimeError("Qlib crash")
 
         with patch("qlib.data.D", mock_D), \
-             patch("data.qlib_manager._find_us_data_dir", return_value=data_dir):
+             patch("data.qlib_manager._find_data_dir", return_value=data_dir):
             from strategies.factor_injector import validate_factor
             result = validate_factor("$close", ["aapl"], threshold_ic=0.03)
         self.assertFalse(result)
@@ -169,7 +169,7 @@ class TestValidateFactor(unittest.TestCase):
         mock_D.features.return_value = pd.DataFrame()
 
         with patch("qlib.data.D", mock_D), \
-             patch("data.qlib_manager._find_us_data_dir", return_value=data_dir):
+             patch("data.qlib_manager._find_data_dir", return_value=data_dir):
             from strategies.factor_injector import validate_factor
             result = validate_factor("$close", ["aapl"], threshold_ic=0.03)
         self.assertFalse(result)
@@ -198,7 +198,7 @@ class TestValidateFactor(unittest.TestCase):
         mock_D.features.side_effect = [factor_df, ret_df]
 
         with patch("qlib.data.D", mock_D), \
-             patch("data.qlib_manager._find_us_data_dir", return_value=data_dir):
+             patch("data.qlib_manager._find_data_dir", return_value=data_dir):
             from strategies.factor_injector import validate_factor
             result = validate_factor("$close", ["aapl"], threshold_ic=0.03)
         self.assertFalse(result)

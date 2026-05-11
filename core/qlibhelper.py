@@ -5,6 +5,7 @@ from qlib.config import _default_region_config
 from .app_state import get_state
 import re
 
+homePath = Path.home()
 REG_CN = "cn"
 REG_US = "us"
 REG_TW = "tw"
@@ -66,6 +67,33 @@ def _is_valid_stock_code(name: str, reg: str) -> bool:
         return bool(MARKET_RULES[reg].match(name))
     return False
 
+def in_docker() -> bool:
+    return (
+        Path("/.dockerenv").exists()
+        or Path("/proc/1/cgroup").exists()
+        and "docker" in Path("/proc/1/cgroup").read_text(errors="ignore")
+    )
+    
+def _get_test_instruments() -> List[str]:
+    reg = get_state().reg
+    match reg:
+            case "us":
+                return [CALENDAR_REF_TICKER_US]
+            case "cn":
+                return [CALENDAR_REF_TICKER_CN, "csi300", "csi500"]
+            case "hk":
+                return [CALENDAR_REF_TICKER_HK]
+            case "tw":
+                return [CALENDAR_REF_TICKER_TW]
+            case "jp":
+                return [CALENDAR_REF_TICKER_JP]
+            case "kr":
+                return [CALENDAR_REF_TICKER_KR]
+            case "bt":
+                return ["BTCUSDT","ETHUSDT","BNBUSDT"]
+            case _:
+                return [CALENDAR_REF_TICKER_US]
+
 def _find_data_dir() -> Path:
     """
     自动探测 Qlib 数据目录。
@@ -74,14 +102,26 @@ def _find_data_dir() -> Path:
       2. ~/.qlib/qlib_data/              （SunsetWolf 原始下载位置）
     判断依据：features/ 下有纯字母子目录（如 aapl）且不含 sh/sz/bj 前缀
     """
+    # 解决容器异常:{容器启动失败：unsupported operand type(s) for /: 'str' and 'str'）}
+    import os
+    #RUN_ENV = os.environ.get("RUN_ENV", "macos")
+    
+    #logger.info(f"root_path:{RUN_ENV}")
+
+    #if RUN_ENV == "docker":
+    #    home = Path("/root")
+    #else:
+    #    home = Path.home()
+    
     reg = get_state().reg
     logger.info(f"当前市场：{reg}")
     candidates = [
-        Path.home() / ".qlib" / "qlib_data" / f"{reg}_data",
-        Path.home() / ".qlib" / "qlib_data",
+        
+        Path(f"{homePath}/.qlib/qlib_data/{reg}_data"),
+        Path(f"{homePath}/.qlib/qlib_data"),
     ]
     for path in candidates:
-        features = path / "features"
+        features = Path(f"{homePath}/features")
         if not features.exists():
             continue
         for d in features.iterdir():
@@ -126,7 +166,7 @@ def _check_qlib_init(bus) -> None:
     """检测 Qlib 数据是否已初始化，并更新全局状态"""
     state = get_state()
 
-    qlib_data = Path.home() / ".qlib" / "qlib_data" / f"{state.reg}_data"
+    qlib_data = Path(f"{homePath}/.qlib/qlib_data/{state.reg}_data")
     if qlib_data.exists() and any(qlib_data.iterdir()):
         try:
             import qlib
@@ -150,26 +190,41 @@ def _check_qlib_init(bus) -> None:
                 "trade_unit": 1, #1股、50股、100股、1000股
                 "limit_threshold": 0.4, #设置0.4匹配95%的情况，极端情况不考虑
                 "deal_price": "close",
+                "open_cost": 0.00236,        #买入手续费率
+                "close_cost": 0.00236,       #卖出手续费率
+                "min_cost": 0,               #最低手续费
             }
             _default_region_config[REG_BT] = {
                 "trade_unit": 0.00000001,
                 "limit_threshold": None,
                 "deal_price": "close",
+                "open_cost": 0.001,        #买入手续费率
+                "close_cost": 0.001,       #卖出手续费率
+                "min_cost": 0,             #最低手续费
             }
             _default_region_config[REG_TW] = {
                 "trade_unit": 1000,
                 "limit_threshold": 0.1,
                 "deal_price": "close",
+                "open_cost": 0.0005,        #买入手续费率
+                "close_cost": 0.0035,       #卖出手续费率
+                "min_cost": 1,            #最低手续费
             }
             _default_region_config[REG_JP] = {
                 "trade_unit": 100,
                 "limit_threshold": None,
                 "deal_price": "close",
+                "open_cost": 0.0015,        #买入手续费率
+                "close_cost": 0.0015,       #卖出手续费率
+                "min_cost": 100,            #最低手续费
             }
             _default_region_config[REG_KR] = {
                 "trade_unit": 1,
                 "limit_threshold": 0.15,
                 "deal_price": "close",
+                "open_cost": 0.0035,        #买入手续费率
+                "close_cost": 0.0055,       #卖出手续费率
+                "min_cost": 20000,          #最低手续费
             }
             
             qlib_safeinit(qlib_data)

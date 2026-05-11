@@ -85,10 +85,10 @@ def validate_factor(expression: str, universe: list[str],
     try:
         from qlib.data import D
         from qlib import config as qlib_config
-        from data.qlib_manager import _find_us_data_dir
+        from data.qlib_manager import _find_data_dir
 
         # 确定日期范围：以 Qlib 数据最新日期为基准往前 VALIDATE_DAYS 个交易日
-        data_dir = _find_us_data_dir()
+        data_dir = _find_data_dir()
         cal_file = data_dir / "calendars" / "day.txt"
         if not cal_file.exists():
             logger.debug("validate_factor: 日历文件不存在，跳过验证")
@@ -269,7 +269,7 @@ def get_valid_factors(
     # 第二步：Qlib 实测 IC
     try:
         from strategies.qlib_strategy import _qlib_init_check, _get_qlib_data_end_date
-        from data.qlib_manager import _find_us_data_dir
+        from data.qlib_manager import _find_data_dir
         _qlib_init_check()
     except Exception as e:
         logger.warning(f"get_valid_factors: Qlib 未就绪（{e}），跳过实测")

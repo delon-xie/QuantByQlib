@@ -204,7 +204,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, lambda: self._sidebar.navigate_to("dashboard"))
         
         # 若本地已有美股 Qlib 数据，后台自动初始化（不阻塞 UI）
-        QTimer.singleShot(500, self._auto_init_qlib) # 会自动转到us_data （异常）
+        QTimer.singleShot(500, self._auto_init_qlib) # 会自动转到{reg}_data （异常）
 
     # ── 业务事件处理 ───────────────────────────────────────
 
