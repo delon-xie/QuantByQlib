@@ -17,10 +17,14 @@ venv/
 env/
 .env
 *.del
+*.obsidian
 
 # binance data downloaders
+Users
 binance_data/
 scripts/core
+tests
+tests_final
 
 # IDE
 .vscode/
@@ -39,6 +43,8 @@ logs/
 
 # Qlib data (large binary data, download separately)
 ~/.qlib/
+*.duckdb
+*.wal
 
 # MLflow
 mlruns/

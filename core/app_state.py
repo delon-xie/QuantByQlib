@@ -18,6 +18,7 @@ class AppState:
     qlib_last_update: Optional[str] = None   # ISO 日期字符串
     reg:str = "us"
     reg_name:str = "美股"
+    storage_type:str = "file" # file | duckdb
 
     # ── OpenBB API Key 状态 ─────────────────────────────────
     fmp_key_configured: bool = False

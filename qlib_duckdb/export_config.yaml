@@ -1,0 +1,34 @@
+# qlib_duckdb/config/export_config.yaml
+default:
+  reg: "hk"
+  freq: "day"
+  start_date: "2000-01-01"
+  end_date: null
+  batch_size: 50
+  
+hk:
+  features:
+    - "$open"
+    - "$close"
+    - "$high"
+    - "$low"
+    - "$volume"
+  db_path: "~/.qlib/duckdb/hk_data.duckdb"
+  
+cn:
+  features:
+    - "$open"
+    - "$close"
+    - "$high"
+    - "$low"
+    - "$volume"
+  db_path: "~/.qlib/duckdb/cn_data.duckdb"
+
+us:
+  features:
+    - "$open"
+    - "$close"
+    - "$high"
+    - "$low"
+    - "$volume"
+  db_path: "~/.qlib/duckdb/us_data.duckdb"

@@ -112,8 +112,8 @@ def _find_data_dir() -> Path:
     #    home = Path("/root")
     #else:
     #    home = Path.home()
-    
-    reg = get_state().reg
+    state = get_state()
+    reg = state.reg
     logger.info(f"当前市场：{reg}")
     candidates = [
         
@@ -129,7 +129,8 @@ def _find_data_dir() -> Path:
                 logger.info(f"返回 Qlib 数据目录：{path}")
                 return path
     # 默认返回根目录（即使暂时为空）
-    logger.info(f"返回 Qlib 默认数据目录：{candidates[0]}")
+    if state.storage_type != "duckdb":
+        logger.info(f"返回 Qlib 默认数据目录：{candidates[0]}")
     return candidates[0]
 
 CALENDAR_REF_TICKER_US = "^GSPC"
@@ -260,6 +261,22 @@ def _get_calendar_ref_ticker() -> str:
                 return CALENDAR_REF_TICKER_US
 
 def qlib_safeinit(qlib_data : str):
+    
+    state = get_state()
+    if(
+        str(qlib_data) == QLIB_INIT_STATUS["provider_uri"] 
+        and state.reg == QLIB_INIT_STATUS["region"] 
+        and True == state.qlib_initialized
+    ) :
+        return
+    
+    if state.storage_type == "duckdb":
+        qlib_safeinit_duckdb(qlib_data=qlib_data)
+    else :
+        qlib_safeinit_file(qlib_data=qlib_data)
+
+def qlib_safeinit_file(qlib_data : str):
+    print("file-storage")
     import qlib
     state = get_state()
     if(
@@ -270,9 +287,42 @@ def qlib_safeinit(qlib_data : str):
         return
             
     QLIB_INIT_STATUS["inited"] = False
-    qlib.init(provider_uri=str(qlib_data), region=state.reg)
+    storage_type = "file"
+    qlib.init(provider_uri=str(qlib_data), storage_type=storage_type, region=state.reg)
     state.qlib_initialized = True
     state.qlib_data_path = str(qlib_data)
     QLIB_INIT_STATUS["provider_uri"] = str(qlib_data)
     QLIB_INIT_STATUS["region"] = state.reg
     QLIB_INIT_STATUS["inited"] = True
+
+
+def qlib_safeinit_duckdb(qlib_data : str):
+    from qlib_duckdb.storage import DuckDBCalendarStorage, DuckDBInstrumentStorage, DuckDBFeatureStorage
+    from qlib_duckdb.storage.integration import init_from_duckdb
+    import qlib
+    print("duckdb-storage")
+    state = get_state()
+    qlib_data = Path(f"{homePath}/.qlib/duckdb/{state.reg}_data.duckdb")
+    if(
+        str(qlib_data) == QLIB_INIT_STATUS["provider_uri"] 
+        and state.reg == QLIB_INIT_STATUS["region"] 
+        and state.storage_type == QLIB_INIT_STATUS["storage_type"] 
+        and True == state.qlib_initialized
+    ) :
+        return
+    
+    reg =state.reg
+    
+    init_from_duckdb(
+        db_path=qlib_data,
+        region=reg,
+    )
+    
+    state.qlib_initialized = True
+    state.qlib_data_path = str(qlib_data)
+    QLIB_INIT_STATUS["provider_uri"] = str(qlib_data)
+    QLIB_INIT_STATUS["storage_type"] = state.storage_type
+    QLIB_INIT_STATUS["region"] = state.reg
+    QLIB_INIT_STATUS["inited"] = True
+    
+    print(f"初始化Duckdb:{qlib_data}")
