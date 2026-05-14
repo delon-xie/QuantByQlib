@@ -37,6 +37,7 @@ import time
 from tqdm import tqdm
 from urllib.parse import urljoin
 from datetime import datetime
+from typing import List
 import argparse
 
 BASE_URL = "https://data.binance.vision/data/spot/monthly/klines"
@@ -201,7 +202,101 @@ def check_and_repair(symbols, intervals):
                     logger.error(f"Error {filename}: {e}")
 
                 time.sleep(0.2)
+def _get_binance_data_urls(symbols:str = DEFAULT_SYMBOLS, intervals:str = DEFAULT_INTERVALS) -> List[str]:
+    """
+    根据 Binance 数据的下载 URL 列表，加密货币数据的下载
+    """
+    from core.app_state import get_state
+    import os
+    
+    # 从应用状态获取配置
+    #reg_name = get_state().reg_name
+    #symbols = get_state().crypto_symbols  # 假设在状态中有这个字段
+    #intervals = get_state().crypto_intervals  # 假设在状态中有这个字段
+    
+    # 如果没有配置，使用默认值
+    if not symbols:
+        symbols = DEFAULT_SYMBOLS
+    
+    if not intervals:
+        intervals = DEFAULT_INTERVALS
+    
+    # 起始时间配置
+    symbol_start_config = {
+        "BTCUSDT": ("2017", "08"),
+        "ETHUSDT": ("2017", "08"),
+        "LTCUSDT": ("2017", "12"),
+        "BNBUSDT": ("2017", "11"),
+        "XRPUSDT": ("2018", "05"),
+        "ADAUSDT": ("2018", "04"),
+        "TRXUSDT": ("2018", "06"),
+        "DOGEUSDT": ("2019", "07"),
+        "SOLUSDT": ("2020", "08"),
+        "AVAXUSDT": ("2020", "09"),
+        "DOTUSDT": ("2020", "08"),
+        "LINKUSDT": ("2019", "01"),
+        "WBTCUSDT": ("2023", "04"),
+        "WBETHUSDT": ("2023", "07"),
+        "XAUTUSDT": ("2026", "03"),
+        "PAXGUSDT": ("2020", "08"),
+        "ZECUSDT": ("2019", "03"),
+        "BCHUSDT": ("2019", "11"),
+        "XLMUSDT": ("2018", "05"),
+        "TONUSDT": ("2024", "08"),
+        "HBARUSDT": ("2019", "09"),
+        "SUIUSDT": ("2023", "05"),
+        "SHIBUSDT": ("2021", "05"),
+        "TAOUSDT": ("2024", "04"),
+        "UNIUSDT": ("2020", "09"),
+        "NEARUSDT": ("2020", "10"),
+        "SKYUSDT": ("2025", "09"),
+        "ASTERUSDT": ("2025", "10"),
+        "PEPEUSDT": ("2023", "05"),
+        "ONDOUSDT": ("2025", "04"),
+        "ICPUSDT": ("2021", "05"),
+        "TRUMPUSDT": ("2025", "01"),
+        "AAVEUSDT": ("2020", "10"),
+        "ETCUSDT": ("2018", "06"),
+        "FILUSDT": ("2020", "10"),
+        "WLFIUSDT": ("2025", "09"),
+    }
+    
+    def generate_months(start_year, start_month, end_year=2026, end_month=4):
+        """生成月份列表"""
+        months = []
+        for year in range(int(start_year), end_year + 1):
+            first_month = int(start_month) if year == int(start_year) else 1
+            last_month = 12 if year != end_year else end_month
 
+            for month in range(first_month, last_month + 1):
+                months.append((year, f"{month:02d}"))
+        return months
+    
+    # 收集所有要下载的URL
+    base_url = "https://data.binance.vision/data/spot/monthly/klines"
+    all_urls = []
+    
+    for symbol in symbols:
+        if symbol not in symbol_start_config:
+            logger.warning(f"未配置起始时间，跳过 {symbol}")
+            continue
+        
+        start_year, start_month = symbol_start_config[symbol]
+        months = generate_months(start_year, start_month)
+        
+        for interval in intervals:
+            for year, month in months:
+                filename = f"{symbol}-{interval}-{year}-{month}.zip"
+                url = f"{base_url}/{symbol}/{interval}/{filename}"
+                all_urls.append(url)
+    
+    # 记录信息
+    from utils.logger import logger
+    logger.info(f"准备下载 {len(all_urls)} 个加密货币数据文件")
+    logger.info(f"涉及 {len(symbols)} 个交易对: {', '.join(symbols[:5])}{'...' if len(symbols) > 5 else ''}")
+    logger.info(f"时间周期: {', '.join(intervals)}")
+    
+    return all_urls
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Binance Kline Data Tool")

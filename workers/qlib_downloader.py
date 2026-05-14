@@ -7,10 +7,11 @@ from __future__ import annotations
 import subprocess
 import sys
 import os
-from typing import Optional
+from typing import Optional, List
 from PyQt6.QtCore import QRunnable, QObject, pyqtSignal, pyqtSlot
 from loguru import logger
 from pathlib import Path
+from workers.binance_downloader import _get_binance_data_urls
 
 # SunsetWolf 美股 Qlib 数据集（真正的美股日频数据，features/ 下为 AAPL/ MSFT/ 等）
 DATA_URL = (
@@ -225,21 +226,24 @@ class QlibDownloadWorker(QRunnable):
 
         self.signals.log_line.emit("[INFO] 解压完成")
 
-    def _get_data_url(self, reg: str) -> str:
+    def _get_data_url(self, reg: str) -> List[str]:
         match reg.lower():
             case "cn":
                 # chenditc/investment_data A股 Qlib 数据集（约 1.5GB，features/ 下为 000001.SZ/ 600000.SH 等）
-                return "https://github.com/chenditc/investment_data/releases/latest/download/qlib_bin.tar.gz"
+                return ["https://github.com/chenditc/investment_data/releases/latest/download/qlib_bin.tar.gz"]
             case "us":
                 # SunsetWolf 美股 Qlib 数据集（真正的美股日频数据，features/ 下为 AAPL/ MSFT/ 等）
-                return "https://github.com/SunsetWolf/qlib_dataset/releases/download/v2/qlib_data_us_1d_latest.zip"
+                return ["https://github.com/SunsetWolf/qlib_dataset/releases/download/v2/qlib_data_us_1d_latest.zip"]
+            case "bt":
+                return _get_binance_data_urls(intervals=["1d"]) #simple test
+                #return _get_binance_data_urls(intervals=["1d"])
             case _:
                 return ""
     def _download_data(self) -> None:
         """
         下载 SunsetWolf/qlib_dataset {regname} Qlib 数据集并解压。
         目标目录始终为 ~/.qlib/qlib_data/{reg}_data（即 FIXED_TARGET_DIR）。
-        zip 内层目录（如 qlib_data_us_1d_latest/）会被重命名为目标目录。
+        支持多个URL下载，每个URL下载一个文件。
         """
         import tempfile
         import shutil
@@ -256,80 +260,72 @@ class QlibDownloadWorker(QRunnable):
         FIXED_PARENT_DIR = FIXED_TARGET_DIR.parent    # ~/.qlib/
         FIXED_TARGET_DIR.mkdir(parents=True, exist_ok=True)
 
-        DATA_URL = self._get_data_url(reg)
-        url = DATA_URL
-        self.signals.log_line.emit(f"[INFO] 下载地址：{url}")
-        self.signals.log_line.emit(f"[INFO] 文件大小：约 {DATA_SIZE_MB} MB，请耐心等待...")
-        self.signals.progress.emit(5, f"正在下载美股 Qlib 数据集（约 {DATA_SIZE_MB} MB）...")
-
+        # 获取多个下载URL
+        data_urls = self._get_data_url(reg)  # 返回列表 [url1, url2, ...]
+        
+        if not data_urls:
+            self.signals.completed.emit(False, f"没有找到{reg_name}数据集的下载链接")
+            return
+        
+        self.signals.log_line.emit(f"[INFO] 共 {len(data_urls)} 个文件需要下载")
+        
         with tempfile.TemporaryDirectory() as tmpdir:
-            if url.endswith(".zip"):
-                archive_name = "qlib_data.zip"
-            elif url.endswith((".tar.gz", ".tgz")):
-                archive_name = "qlib_data.tar.gz"
-            else:
-                archive_name = os.path.basename(url)
+            tmpdir_path = Path(tmpdir)
+            all_archive_paths = []
             
-            archive_path = Path(tmpdir) / archive_name
-            # zip_path = os.path.join(tmpdir, "qlib_data_us.zip")
-
-            # 下载
-            self.signals.log_line.emit("[INFO] 开始下载到临时目录...")
-            self.signals.log_line.emit(f"[CMD] curl -L --progress-bar -o {archive_path} {url}") 
-            cmd_download = ["curl", "-L", "--progress-bar", "-o", archive_path, url]
-
-            try:
-                proc = subprocess.Popen(
-                    cmd_download,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                )
-                for line in iter(proc.stdout.readline, ""):
-                    if self._cancelled:
-                        proc.terminate()
-                        self.signals.completed.emit(False, "用户取消")
-                        return
-                    line = line.rstrip()
-                    if line:
-                        self.signals.log_line.emit(line)
-                        if "%" in line:
-                            try:
-                                pct_str = [s for s in line.split() if "%" in s][0].replace("%", "")
-                                pct = max(5, min(75, int(float(pct_str) * 0.70) + 5))
-                                self.signals.progress.emit(pct, f"正在下载{reg_name}数据集...")
-                            except Exception:
-                                pass
-                proc.wait()
-                if proc.returncode != 0:
-                    self.signals.completed.emit(False, f"curl 下载失败（退出码 {proc.returncode}）")
-                    return
-            except FileNotFoundError:
-                self.signals.log_line.emit("[INFO] curl 不可用，使用 Python urllib 下载...")
-                self._download_with_urllib_fallback(url, archive_path)
-
+            # 下载所有文件
+            download_ok = self._download_all_files(data_urls, tmpdir_path, all_archive_paths)
+            if not download_ok:
+                return
+            
             if self._cancelled:
                 self.signals.completed.emit(False, "用户取消")
                 return
 
-            self.signals.log_line.emit("[INFO] 下载完成，正在解压...")
+            self.signals.log_line.emit("[INFO] 所有文件下载完成，正在解压...")
             self.signals.progress.emit(78, "正在解压数据包（约 2-3 分钟）...")
+            
+            #binance 独立逻辑
+            if reg == "bt" :
+                from workers.qLib_bin_writer import BinanceData_2_QlibData
+                BinanceData_2_QlibData(input=tmpdir_path, ouput = str(FIXED_TARGET_DIR), archive_paths=all_archive_paths, freq="day", signals= self.signals)
+                self.signals.log_line.emit(f"[INFO] 已全部更新完成")
 
-            # 解压到临时子目录，避免直接污染目标目录
-            extract_tmp = Path(tmpdir) / "extracted"
+                self.signals.progress.emit(96, "重新初始化 Qlib...")
+                self.signals.log_line.emit("[INFO] 正在重新初始化 Qlib...")
+
+                ok = init_qlib()
+                if ok:
+                    self.signals.progress.emit(100, "✅ 下载完成")
+                    self.signals.log_line.emit(f"[INFO] ✅ {reg_name} Qlib 数据下载成功，可以开始量化选股")
+                    self.signals.completed.emit(True, f"{reg_name} Qlib 数据下载成功")
+                    try:
+                        from core.event_bus import get_event_bus
+                        get_event_bus().qlib_initialized.emit()
+                        get_event_bus().qlib_data_downloaded.emit()
+                    except Exception:
+                        pass
+                else:
+                    self.signals.completed.emit(False, "数据解压完成但 Qlib 初始化失败，请检查目录结构")
+                return 
+
+            # 股票数据
+            # 解压到临时子目录
+            extract_tmp = tmpdir_path / "extracted"
             extract_tmp.mkdir()
             
+            # 解压所有文件
             try:
-                self._extract_archive(Path(archive_path), extract_tmp)
+                for archive_path in all_archive_paths:
+                    self.signals.log_line.emit(f"[INFO] 解压文件: {archive_path.name}")
+                    self._extract_archive(archive_path, extract_tmp)
             except Exception as e:
                 self.signals.completed.emit(False, f"解压失败：{e}")
                 return
 
             self.signals.progress.emit(93, "检查解压结果...")
 
-            # 找到解压后含 features/ 的子目录（zip 内层目录名不固定）
+            # 找到解压后含 features/ 的子目录
             DATA_ITEMS = ["features", "calendars", "instruments"]
             extracted_dir = None
 
@@ -381,6 +377,107 @@ class QlibDownloadWorker(QRunnable):
                 pass
         else:
             self.signals.completed.emit(False, "数据解压完成但 Qlib 初始化失败，请检查目录结构")
+
+    def _download_all_files(self, data_urls: List[str], tmpdir_path: Path, all_archive_paths: List[Path]) -> bool:
+        """
+        下载所有文件
+        """
+        from core.app_state import get_state
+        reg_name = get_state().reg_name
+        
+        total_files = len(data_urls)
+        for idx, url in enumerate(data_urls, 1):
+            if self._cancelled:
+                return False
+                
+            # 生成文件名
+            if url.endswith(".zip"):
+                archive_name = f"qlib_data_part{idx}.zip"
+            elif url.endswith((".tar.gz", ".tgz")):
+                archive_name = f"qlib_data_part{idx}.tar.gz"
+            else:
+                # 从URL中提取文件名
+                import os
+                archive_name = os.path.basename(url) or f"data_part{idx}"
+            
+            archive_path = tmpdir_path / archive_name
+            all_archive_paths.append(archive_path)
+            
+            self.signals.log_line.emit(f"[INFO] 正在下载文件 {idx}/{total_files}")
+            self.signals.log_line.emit(f"[INFO] 下载地址：{url}")
+            self.signals.progress.emit(
+                5 + int((idx-1) * 70 / total_files), 
+                f"正在下载{reg_name}数据集 ({idx}/{total_files})..."
+            )
+
+            # 下载单个文件
+            download_ok = self._download_single_file(url, archive_path, idx, total_files)
+            if not download_ok:
+                return False
+        
+        return True
+
+    def _download_single_file(self, url: str, archive_path: Path, current_idx: int, total_files: int) -> bool:
+        """
+        下载单个文件
+        """
+        from core.app_state import get_state
+        reg_name = get_state().reg_name
+        
+        self.signals.log_line.emit("[INFO] 开始下载到临时目录...")
+        self.signals.log_line.emit(f"[CMD] curl --retry 3 --retry-delay 5 -L --progress-bar -o {archive_path} {url}") 
+        # 使用重试选项
+        # curl --retry 3 --retry-delay 5 -L -o output.zip "https://data.binance.vision/..."
+        cmd_download = ["curl", "--retry", "3", "--retry-delay", "5", "-L", "--progress-bar", "-o", str(archive_path), url]
+
+        try:
+            proc = subprocess.Popen(
+                cmd_download,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            for line in iter(proc.stdout.readline, ""):
+                if self._cancelled:
+                    proc.terminate()
+                    self.signals.completed.emit(False, "用户取消")
+                    return False
+                line = line.rstrip()
+                if line:
+                    self.signals.log_line.emit(line)
+                    if "%" in line:
+                        try:
+                            pct_str = [s for s in line.split() if "%" in s][0].replace("%", "")
+                            file_pct = float(pct_str)
+                            
+                            # 计算总进度：5%（起始） + 当前文件占比 + 前面文件进度
+                            base_progress = 5
+                            file_range = 70  # 总共70%用于下载
+                            file_portion = file_range / total_files
+                            progress = base_progress + (current_idx - 1) * file_portion + (file_pct * 0.01 * file_portion)
+                            
+                            progress_int = max(5, min(75, int(progress)))
+                            self.signals.progress.emit(
+                                progress_int, 
+                                f"正在下载{reg_name}数据集 ({current_idx}/{total_files}) {file_pct:.1f}%..."
+                            )
+                        except Exception:
+                            pass
+            proc.wait()
+            if proc.returncode != 0:
+                self.signals.completed.emit(False, f"curl 下载失败（退出码 {proc.returncode}）")
+                return False
+        except FileNotFoundError:
+            self.signals.log_line.emit("[INFO] curl 不可用，使用 Python urllib 下载...")
+            try:
+                self._download_with_urllib_fallback(url, archive_path)
+            except Exception as e:
+                self.signals.completed.emit(False, f"urllib下载失败：{e}")
+                return False
+        
+        return True
 
     def _download_with_urllib_fallback(self, url: str, dest: str) -> None:
         """urllib fallback 下载"""

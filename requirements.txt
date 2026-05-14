@@ -61,3 +61,4 @@ tqdm>=4.67.3
 duckdb>=1.5.2
 pytest 
 pytest-cov
+python-binance

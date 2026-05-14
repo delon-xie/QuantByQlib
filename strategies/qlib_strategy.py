@@ -21,6 +21,12 @@ from pathlib import Path
 from typing import Optional, Literal
 from core.qlibhelper import _is_valid_stock_code
 import torch
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import warnings
+warnings.filterwarnings('ignore')
 
 # ── Qlib 数据日期范围检测 ──────────────────────────────────────
 
@@ -233,7 +239,134 @@ def _scores_to_result(scores_series: pd.Series, strategy_key: str,
 
 
 # ── yfinance 规则打分 fallback ──────────────────────────────────
+def download_or_get_local_data(chunk, cb, progress_info=""):
+    """
+    尝试从 yfinance 下载数据，失败时从 qlib 获取本地数据
+    
+    Args:
+        chunk: 股票代码列表
+        cb: 回调函数，用于显示进度
+        progress_info: 进度信息
+        
+    Returns:
+        下载的数据 DataFrame
+    """
+    df_all = None
+    
+    try:
+        # 尝试从 yfinance 下载数据
+        cb(f"{progress_info}尝试下载 {chunk}...")
+        df_all = yf.download(
+            chunk,
+            period="3mo",
+            progress=False,
+            auto_adjust=True,
+            group_by="ticker",
+            threads=True,
+        )
+        
+        if df_all is not None and not df_all.empty:
+            cb(f"{progress_info}下载成功")
+            return df_all
+            
+    except Exception as e:
+        cb(f"{progress_info}yfinance 下载失败: {str(e)[:50]}...")
+    
+    # 如果 yfinance 下载失败，尝试从 qlib 获取本地数据
+    cb(f"{progress_info}尝试从 qlib 本地数据获取...")
+    try:
+        df_all = get_qlib_local_data(chunk, days=90)  # 获取最近3个月数据
+        if df_all is not None and not df_all.empty:
+            cb(f"{progress_info}qlib 本地数据获取成功")
+        else:
+            cb(f"{progress_info}qlib 本地数据为空")
+    except Exception as e:
+        cb(f"{progress_info}qlib 本地数据获取失败: {str(e)[:50]}...")
+    
+    return df_all
 
+def get_qlib_local_data(symbols, days=90):
+    """
+    从 qlib 本地数据获取历史数据
+    
+    Args:
+        symbols: 股票代码列表
+        days: 获取最近多少天的数据
+        
+    Returns:
+        与 yfinance 格式兼容的 DataFrame
+    """
+    try:
+        from qlib.data import D
+        from qlib.data.data import Cal
+        
+        # 获取日历
+        cal_client = Cal()
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        
+        # 获取交易日历
+        trade_days = cal_client.get_calendar(start_date, end_date)
+        if len(trade_days) == 0:
+            return pd.DataFrame()
+        
+        # 获取数据
+        fields = ["$close", "$volume", "$open", "$high", "$low"]
+        
+        all_data = []
+        for symbol in symbols:
+            try:
+                # 获取单个股票的数据
+                df = D.features([symbol], fields, start_time=start_date, end_time=end_date)
+                if df is not None and not df.empty:
+                    # 重命名列以匹配 yfinance 格式
+                    df = df.rename(columns={
+                        "$close": "Close",
+                        "$volume": "Volume",
+                        "$open": "Open",
+                        "$high": "High",
+                        "$low": "Low"
+                    })
+                    
+                    # 添加 Adj Close 列（qlib 没有复权价格，用收盘价代替）
+                    df["Adj Close"] = df["Close"]
+                    
+                    # 设置多级列索引以匹配 yfinance 格式
+                    df_columns = pd.MultiIndex.from_product([[symbol], 
+                        ["Open", "High", "Low", "Close", "Adj Close", "Volume"]])
+                    
+                    # 重新组织数据
+                    df_multi = pd.DataFrame(index=df.index)
+                    for col in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
+                        if col in df.columns:
+                            df_multi[(symbol, col)] = df[col]
+                    
+                    all_data.append(df_multi)
+            except Exception as e:
+                print(f"获取 {symbol} 数据失败: {e}")
+                continue
+        
+        if not all_data:
+            return pd.DataFrame()
+        
+        # 合并所有股票数据
+        df_all = pd.concat(all_data, axis=1)
+        
+        # 如果只有一只股票，调整格式
+        if len(symbols) == 1:
+            symbol = symbols[0]
+            if (symbol, "Close") in df_all.columns:
+                # 已经是正确的格式
+                pass
+        
+        return df_all
+        
+    except ImportError as e:
+        print(f"导入 qlib 失败: {e}")
+        return pd.DataFrame()
+    except Exception as e:
+        print(f"获取 qlib 数据失败: {e}")
+        return pd.DataFrame()
 def _yfinance_score_universe(
     universe: list[str],
     strategy_key: str,
@@ -269,16 +402,28 @@ def _yfinance_score_universe(
         chunk = universe[i: i + batch]
         pct = 10 + int((i / total) * 70)
         cb(pct, f"下载价格数据 {i+1}-{min(i+batch, total)}/{total}...")
+        # 创建进度信息
+        progress_info = f"下载价格数据 {i+1}-{min(i+batch, total)}/{total} "
+    
         try:
             #tickers_str = " ".join(chunk)
-            df_all = yf.download(
-                chunk,
-                period="3mo",
-                progress=False,
-                auto_adjust=True,
-                group_by="ticker",
-                threads=True,
-            )
+            from core.app_state import get_state
+            reg = get_state().reg
+            
+            if reg == "bt":
+                # 需要处理binance的下载数据
+                # TODO: binance 实时日数据下载
+                cb(f"{progress_info}BTC行情，使用 qlib 本地数据...")
+                print(f"{progress_info}BTC行情，使用 qlib 本地数据...")
+                df_all = get_qlib_local_data(chunk, days=90)
+            else:
+                # 使用 yfinance 下载，失败时自动回退到 qlib
+                print("yfinace")
+                df_all = download_or_get_local_data(chunk, cb, progress_info)
+            
+            if df_all is None or df_all.empty:
+                cb(f"{progress_info}数据为空，跳过")
+                continue
             if df_all is None or df_all.empty:
                 continue
 

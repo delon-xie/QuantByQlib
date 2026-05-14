@@ -21,6 +21,7 @@ env/
 
 # binance data downloaders
 Users
+qlib_data/
 binance_data/
 scripts/core
 tests

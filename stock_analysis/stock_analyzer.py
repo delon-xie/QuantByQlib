@@ -14,6 +14,7 @@ from loguru import logger
 from stock_analysis.alpha_reader import Alpha158Reader, TechnicalSignal  # noqa: F401
 from stock_analysis.price_chart import PriceChart, ChartData
 from stock_analysis.fundamental import FundamentalAnalyzer, FundamentalData
+from stock_analysis.binance_analyzer import BinanceAnalyzer
 from stock_analysis.sentiment import SentimentAnalyzer, SentimentData
 from stock_analysis.technical_scorer import TechnicalScorer, TechnicalScore  # noqa: F401
 
@@ -65,9 +66,12 @@ class StockAnalyzer:
     """个股综合分析器：并行获取五个数据维度"""
 
     def __init__(self):
+        from core.app_state import get_state
+        self.reg = get_state().reg
         self._alpha_reader    = Alpha158Reader()
         self._price_chart     = PriceChart()
         self._fundamental     = FundamentalAnalyzer()
+        self._bfundamental     = BinanceAnalyzer()
         self._sentiment       = SentimentAnalyzer()
         self._tech_scorer     = TechnicalScorer()
 
@@ -90,7 +94,7 @@ class StockAnalyzer:
         tasks = {
             "technical":   lambda: self._alpha_reader.get_technical_signal(ticker),  # type: ignore[attr-defined]
             "chart":       lambda: self._price_chart.get_chart_data(ticker, price_period_days),
-            "fundamental": lambda: self._fundamental.analyze(ticker),
+            "fundamental": lambda: self._bfundamental.analyze(ticker) if self.reg == "bt" else self._fundamental.analyze(ticker),
             "sentiment":   lambda: self._sentiment.analyze(ticker, use_deep_model=use_deep_sentiment),
         }
 
