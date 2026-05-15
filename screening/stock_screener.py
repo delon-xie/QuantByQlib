@@ -203,14 +203,32 @@ class StockScreener:
             import pandas as pd
             # 一次性批量下载最近 2 天，计算涨跌幅
             symbols = " ".join(tickers)
-            df = yf.download(
-                symbols,
-                period="2d",
-                auto_adjust=True,
-                progress=False,
-                threads=True,
-                group_by="ticker",
-            )
+            
+            from core.app_state import get_state
+            from workers.binance_downloader import binance_download
+            reg = get_state().reg
+            if reg == "bt":
+                df = binance_download(
+                    symbols,
+                    period="2d",
+                    auto_adjust=True,
+                    progress=False,
+                    threads=True,
+                    group_by="ticker",
+                )
+            else:
+                import yfinance as yf
+                # yfinance 一次下载所有 ticker，速度远快于逐一下载
+                # tickers_str = " ".join(tickers)
+                df = yf.download(
+                    symbols,
+                    period="2d",
+                    auto_adjust=True,
+                    progress=False,
+                    threads=True,
+                    group_by="ticker",
+                )
+                
             if df is None or df.empty:
                 return {t: None for t in tickers}
 

@@ -63,13 +63,30 @@ class _FetchWorker(QRunnable):
         """Fallback：yfinance 公共数据"""
         import yfinance as yf
         params = self._YF_PARAMS[self.period_key]
-        df = yf.download(
-            self.ticker, 
-            progress=False, 
-            auto_adjust=True, 
-            threads=True, 
-            **params
-        )
+        
+        from core.app_state import get_state
+        from workers.binance_downloader import binance_download
+        reg = get_state().reg
+        if reg == "bt":
+            df = binance_download(
+                self.ticker, 
+                progress=False, 
+                auto_adjust=True, 
+                threads=True, 
+                **params
+            )
+        else:
+            import yfinance as yf
+            # yfinance 一次下载所有 ticker，速度远快于逐一下载
+            # tickers_str = " ".join(tickers)
+            df = yf.download(
+                self.ticker, 
+                progress=False, 
+                auto_adjust=True, 
+                threads=True, 
+                **params
+            )
+
         if df is not None and not df.empty:
             if hasattr(df.columns, "levels"):
                 df.columns = df.columns.get_level_values(0)

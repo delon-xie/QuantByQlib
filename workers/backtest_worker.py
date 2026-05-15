@@ -21,6 +21,10 @@ class BacktestWorker(QRunnable):
 
     def __init__(self, config: BacktestConfig):
         super().__init__()
+        from core.app_state import get_state
+        if get_state().reg == "bt" and config.benchmark == "SPY":
+            config.benchmark = "BTCUSDT"
+
         self.config  = config
         self.signals = BacktestSignals()
         self.setAutoDelete(True)

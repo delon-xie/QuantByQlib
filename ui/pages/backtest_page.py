@@ -325,6 +325,11 @@ class BacktestPage(QWidget):
             start_date=start, end_date=end,
             topk=topk, init_capital=capital,
         )
+        
+        from core.app_state import get_state
+        if get_state().reg == "bt" and config.benchmark == "SPY":
+            config.benchmark = "BTCUSDT"
+        
         self._run_btn.setEnabled(False)
         self._stop_btn.setEnabled(True)
         self._progress_bar.setVisible(True)

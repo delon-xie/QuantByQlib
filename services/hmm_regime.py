@@ -123,10 +123,12 @@ def _fetch_spy_data(anchor: date, lookback_years: int) -> Optional[pd.DataFrame]
     start = anchor - timedelta(days=int(lookback_years * 365.25) + 30)
     logger.info(f"[HMM] 获取 SPY 数据：{start} → {anchor}")
 
+    from core.app_state import get_state
+    reg = get_state().reg
     # 优先长桥
     try:
         from data.longport_client import is_configured
-        if is_configured():
+        if is_configured() and reg != "bt":
             df = _fetch_longport_spy(anchor)
             if df is not None and len(df) > 100:
                 logger.info(f"[HMM] 长桥数据 OK，{len(df)} 条")
@@ -136,15 +138,31 @@ def _fetch_spy_data(anchor: date, lookback_years: int) -> Optional[pd.DataFrame]
 
     # Fallback yfinance
     try:
-        import yfinance as yf
-        raw = yf.download(
-            "SPY", 
-            start=start.isoformat(), 
-            end=anchor.isoformat(),
-            progress=False, 
-            auto_adjust=True,
-            threads=True,
-        )
+        from core.app_state import get_state
+        from workers.binance_downloader import binance_download
+        reg = get_state().reg
+        if reg == "bt":
+            raw = binance_download(
+                "BTCUSDT", 
+                start=start.isoformat(), 
+                end=anchor.isoformat(),
+                progress=False, 
+                auto_adjust=True,
+                threads=True,
+            )
+        else:
+            import yfinance as yf
+            # yfinance 一次下载所有 ticker，速度远快于逐一下载
+            # tickers_str = " ".join(tickers)
+            raw = yf.download(
+                "SPY", 
+                start=start.isoformat(), 
+                end=anchor.isoformat(),
+                progress=False, 
+                auto_adjust=True,
+                threads=True,
+            )
+        
         if raw is not None and not raw.empty:
             if hasattr(raw.columns, "levels"):
                 raw.columns = raw.columns.get_level_values(0)

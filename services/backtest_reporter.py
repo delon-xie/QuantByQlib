@@ -74,7 +74,9 @@ def run_backtest_report(
     # 回测时间窗口：近一年
     end_date   = d.isoformat()
     start_date = (d - timedelta(days=365)).isoformat()
-    benchmark_ticker = "SPY"
+    from core.app_state import get_state
+    reg = get_state().reg
+    benchmark_ticker = "SPY" if reg != "bt" else "BTCUSDT"
 
     strategies_data = {}
     errors: list[str] = []
@@ -150,6 +152,11 @@ def _run_single_strategy_backtest(
             end_date=end_date,
             universe=universe,
         )
+        
+        from core.app_state import get_state
+        if get_state().reg == "bt" and config.benchmark == "SPY":
+            config.benchmark = "BTCUSDT"
+            
         engine = BacktestEngine()
         report = engine.run(config)
         m = report.metrics
@@ -248,14 +255,31 @@ def _get_benchmark_metrics(ticker: str, start_date: str, end_date: str) -> dict:
     try:
         import yfinance as yf
         import numpy as np
-        raw = yf.download(
-            ticker, 
-            start=start_date, 
-            end=end_date,
-            progress=False, 
-            auto_adjust=True, 
-            threads=True,
-        )
+        from core.app_state import get_state
+        from workers.binance_downloader import binance_download
+        reg = get_state().reg
+        if reg == "bt":
+            raw = binance_download(
+                ticker, 
+                start=start_date, 
+                end=end_date,
+                progress=False, 
+                auto_adjust=True, 
+                threads=True,
+            )
+        else:
+            import yfinance as yf
+            # yfinance 一次下载所有 ticker，速度远快于逐一下载
+            # tickers_str = " ".join(tickers)
+            raw = yf.download(
+                ticker, 
+                start=start_date, 
+                end=end_date,
+                progress=False, 
+                auto_adjust=True, 
+                threads=True,
+            )
+
         if raw is None or raw.empty:
             return {"name": ticker, "recent_30d_return": None, "annual_return": None}
         if hasattr(raw.columns, "levels"):

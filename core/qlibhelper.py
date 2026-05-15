@@ -174,7 +174,7 @@ def _check_qlib_init(bus) -> None:
             # from core.constant import REG_US
             from qlib.config import C
             #C.set({"joblib_backend", "sequential"})
-            C["joblib_backend"] = "sequential"
+            #C["joblib_backend"] = "sequential"
             
             """
             为了防范程序交易错误或极端波动引发的“闪崩”，港股针对特定股票设有 市场波动调节机制（VCM，俗称冷静期），具体规则如下：
@@ -288,7 +288,26 @@ def qlib_safeinit_file(qlib_data : str):
             
     QLIB_INIT_STATUS["inited"] = False
     storage_type = "file"
-    qlib.init(provider_uri=str(qlib_data), storage_type=storage_type, region=state.reg)
+    from qlib.config import C
+    import gc
+    import qlib
+    from qlib.data.cache import H
+    from qlib.config import C
+    
+    # 1. 清空内存缓存（相对安全）
+    H.clear()
+    
+    # 2. 重置配置对象（危险：会丢失所有自定义设置）
+    #C.reset()  # 注意：这是 C.reset()，不是 qlib.reset()
+    
+    # 3. 强制 Python 垃圾回收
+    gc.collect()
+    
+    C["joblib_backend"] = "threading"  # 或者 "sequential"
+    C["kernels"] = 1  # 强制单核
+    
+    qlib.init(provider_uri=str(qlib_data), storage_type=storage_type, region=state.reg, skip_if_reg=False,)
+    
     state.qlib_initialized = True
     state.qlib_data_path = str(qlib_data)
     QLIB_INIT_STATUS["provider_uri"] = str(qlib_data)

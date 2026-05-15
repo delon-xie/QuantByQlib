@@ -1,17 +1,18 @@
 import multiprocessing as mp
 mp.set_start_method("spawn", force=True)
 import os
-os.environ["JOBLIB_MULTIPROCESSING"] = "0"
+#os.environ["JOBLIB_MULTIPROCESSING"] = "0"
 
-import joblib
+#import joblib
 import os
 
-joblib.parallel_backend("threading", n_jobs=1)
+#from joblib import Parallel, delayed
+#joblib.parallel_backend("threading")
 
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["JOBLIB_MULTIPROCESSING"] = "0"
+#os.environ["JOBLIB_MULTIPROCESSING"] = "0"
 
 #import mlflow
 #mlflow.set_tracking_uri("duckdb:////mlflow.duckdb")

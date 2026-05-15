@@ -256,7 +256,7 @@ def main():
         provider_uri = os.getenv("QLIB_DATA_URI", f"{homePath}/.qlib/qlib_data/{args.reg}_data")
         from qlib.config import C
         #C.set({"joblib_backend", "sequential"})
-        C["joblib_backend"] = "sequential"
+        #C["joblib_backend"] = "sequential"
         qlib_safeinit(provider_uri)
         logger.info(f"Qlib initialized with provider_uri: {provider_uri}")
         

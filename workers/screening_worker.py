@@ -102,7 +102,6 @@ class ScreeningWorker(QRunnable):
                 return
 
             self.signals.progress.emit(100, f"✅ 完成，选出 {len(results)} 支")
-            self.signals.completed.emit(results)
 
             # 同步到事件总线（让其他页面监听）
             try:
@@ -122,6 +121,10 @@ class ScreeningWorker(QRunnable):
                 self.signals.log.emit(f"ScreeningWorker [{self.strategy_key}] 信号 CSV 写入失败（非致命）：{ex}")
 
             logger.info(f"ScreeningWorker [{self.strategy_key}] 完成，{len(results)} 支")
+            
+            from core.event_bus import get_event_bus
+            bus = get_event_bus()
+            self.signals.completed.emit(results)       
             bus.screening_completed.emit(results)
 
         except InterruptedError as e:

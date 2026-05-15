@@ -104,8 +104,8 @@ def validate_factor(expression: str, universe: list[str],
 
         # macOS + Python 3.9: D.features 使用 multiprocessing spawn 会在子线程里崩溃。
         # 强制 sequential（单进程）模式，避免 joblib MemmappingPool RuntimeError。
-        orig_backend = qlib_config.C.get("joblib_backend", "loky")
-        qlib_config.C["joblib_backend"] = "sequential"
+        #orig_backend = qlib_config.C.get("joblib_backend", "loky")
+        #qlib_config.C["joblib_backend"] = "sequential"
 
         try:
             # 取因子值
@@ -125,7 +125,8 @@ def validate_factor(expression: str, universe: list[str],
             if ret_df is None or ret_df.empty:
                 return (False, None, None, None) if return_metrics else False
         finally:
-            qlib_config.C["joblib_backend"] = orig_backend
+            #qlib_config.C["joblib_backend"] = orig_backend
+            pass
 
         # 对齐 index — 去重后再 intersection（防 non-unique multi-index）
         factor_s = factor_df.iloc[:, 0].dropna()

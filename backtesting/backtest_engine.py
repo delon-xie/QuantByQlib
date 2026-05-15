@@ -60,6 +60,9 @@ class BacktestEngine:
         self._cb(progress_cb, 5, "初始化回测引擎...")
 
         from core.app_state import get_state
+        if get_state().reg == "bt" and config.benchmark == "SPY":
+            config.benchmark = "BTCUSDT"
+        
         if get_state().qlib_initialized:
             return self._run_qlib_backtest(config, progress_cb)
         else:
@@ -75,6 +78,10 @@ class BacktestEngine:
         - 直接复用各策略类的 model_factory，保证模型完全一致
         - 不依赖 Qlib workflow R/SignalRecord/PortAnaRecord（0.9.7 不稳定）
         """
+        from core.app_state import get_state
+        if get_state().reg == "bt" and config.benchmark == "SPY":
+            config.benchmark = "BTCUSDT"
+            
         self._cb(progress_cb, 5, "准备 Qlib 数据集...")
         try:
             from strategies.qlib_strategy import (
@@ -254,6 +261,10 @@ class BacktestEngine:
         3. 模拟等权持有、计算净值曲线与绩效指标
         不同策略使用不同的因子权重，使结果有真实差异。
         """
+        from core.app_state import get_state
+        if get_state().reg == "bt" and config.benchmark == "SPY":
+            config.benchmark = "BTCUSDT"
+            
         self._cb(progress_cb, 10, "根据策略特征选股...")
 
         from screening.stock_screener import StockScreener
@@ -429,17 +440,31 @@ class BacktestEngine:
         self._cb(progress_cb, 30, f"批量下载 {len(tickers)} 支股票价格...")
         close_df = None
         try:
-            import yfinance as yf
-            # yfinance 一次下载所有 ticker，速度远快于逐一下载
-            # tickers_str = " ".join(tickers)
-            df_all = yf.download(
-                tickers,
-                start=start,
-                end=end,
-                progress=False,
-                auto_adjust=True,
-                threads=True,
-            )
+            from core.app_state import get_state
+            from workers.binance_downloader import binance_download
+            reg = get_state().reg
+            if reg == "bt":
+                df_all = binance_download(
+                    tickers,
+                    start=start,
+                    end=end,
+                    progress=False,
+                    auto_adjust=True,
+                    threads=True,
+                )
+            else:
+                import yfinance as yf
+                # yfinance 一次下载所有 ticker，速度远快于逐一下载
+                # tickers_str = " ".join(tickers)
+                df_all = yf.download(
+                    tickers,
+                    start=start,
+                    end=end,
+                    progress=False,
+                    auto_adjust=True,
+                    threads=True,
+                )
+                
             if df_all is None or df_all.empty:
                 raise ValueError("yfinance 批量下载返回空数据")
 
@@ -507,15 +532,31 @@ class BacktestEngine:
 
         # 1. yfinance 直接获取（最可靠，无需 API Key）
         try:
-            import yfinance as yf
-            df = yf.download(
-                ticker, 
-                start=start, 
-                end=end,
-                progress=False, 
-                auto_adjust=True, 
-                threads=True,
-            )
+            from core.app_state import get_state
+            from workers.binance_downloader import binance_download
+            reg = get_state().reg
+            if reg == "bt":
+                df = binance_download(
+                    ticker, 
+                    start=start, 
+                    end=end,
+                    progress=False, 
+                    auto_adjust=True, 
+                    threads=True,
+                )
+            else:
+                import yfinance as yf
+                # yfinance 一次下载所有 ticker，速度远快于逐一下载
+                # tickers_str = " ".join(tickers)
+                df = yf.download(
+                    ticker, 
+                    start=start, 
+                    end=end,
+                    progress=False, 
+                    auto_adjust=True, 
+                    threads=True,
+                )
+            
             if df is not None and not df.empty:
                 # yfinance >= 0.2 返回 MultiIndex 列时处理
                 if hasattr(df.columns, "levels"):

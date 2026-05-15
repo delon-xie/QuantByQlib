@@ -238,14 +238,31 @@ class SignalValidator:
                 latest   = max(s.signal_date for s in sig_list) + timedelta(days=max(forward_days) + 10)
                 latest   = min(latest, date.today())
 
-                hist = yf.download(
-                    ticker,
-                    start=earliest.isoformat(),
-                    end=latest.isoformat(),
-                    progress=False,
-                    auto_adjust=True,
-                    threads=True,
-                )
+                from core.app_state import get_state
+                from workers.binance_downloader import binance_download
+                reg = get_state().reg
+                if reg == "bt":
+                    hist = binance_download(
+                        ticker,
+                        start=earliest.isoformat(),
+                        end=latest.isoformat(),
+                        progress=False,
+                        auto_adjust=True,
+                        threads=True,
+                    )
+                else:
+                    import yfinance as yf
+                    # yfinance 一次下载所有 ticker，速度远快于逐一下载
+                    # tickers_str = " ".join(tickers)
+                    hist = yf.download(
+                        ticker,
+                        start=earliest.isoformat(),
+                        end=latest.isoformat(),
+                        progress=False,
+                        auto_adjust=True,
+                        threads=True,
+                    )
+                
                 if hist is None or hist.empty:
                     return results
 

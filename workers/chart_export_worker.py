@@ -120,13 +120,29 @@ class ChartExportWorker(QRunnable):
                             pass
 
                         if df is None or df.empty:
-                            df = yf.download(
-                                ticker, progress=False, 
-                                auto_adjust=True,
-                                period=params["period"], 
-                                interval=params["interval"],
-                                threads=True,
-                            )
+                            from core.app_state import get_state
+                            from workers.binance_downloader import binance_download
+                            reg = get_state().reg
+                            if reg == "bt":
+                                df = binance_download(
+                                    ticker, progress=False, 
+                                    auto_adjust=True,
+                                    period=params["period"], 
+                                    interval=params["interval"],
+                                    threads=True,
+                                )
+                            else:
+                                import yfinance as yf
+                                # yfinance 一次下载所有 ticker，速度远快于逐一下载
+                                # tickers_str = " ".join(tickers)
+                                df = yf.download(
+                                    ticker, progress=False, 
+                                    auto_adjust=True,
+                                    period=params["period"], 
+                                    interval=params["interval"],
+                                    threads=True,
+                                )
+
                             if df is not None and not df.empty:
                                 if hasattr(df.columns, "levels"):
                                     df.columns = df.columns.get_level_values(0)

@@ -256,15 +256,32 @@ def download_or_get_local_data(chunk, cb, progress_info=""):
     try:
         # 尝试从 yfinance 下载数据
         cb(f"{progress_info}尝试下载 {chunk}...")
-        df_all = yf.download(
-            chunk,
-            period="3mo",
-            progress=False,
-            auto_adjust=True,
-            group_by="ticker",
-            threads=True,
-        )
         
+        from core.app_state import get_state
+        from workers.binance_downloader import binance_download
+        reg = get_state().reg
+        if reg == "bt":
+            df_all = binance_download(
+                chunk,
+                period="3mo",
+                progress=False,
+                auto_adjust=True,
+                group_by="ticker",
+                threads=True,
+            )
+        else:
+            import yfinance as yf
+            # yfinance 一次下载所有 ticker，速度远快于逐一下载
+            # tickers_str = " ".join(tickers)
+            df_all = yf.download(
+                chunk,
+                period="3mo",
+                progress=False,
+                auto_adjust=True,
+                group_by="ticker",
+                threads=True,
+            )
+
         if df_all is not None and not df_all.empty:
             cb(f"{progress_info}下载成功")
             return df_all
@@ -412,7 +429,6 @@ def _yfinance_score_universe(
             
             if reg == "bt":
                 # 需要处理binance的下载数据
-                # TODO: binance 实时日数据下载
                 cb(f"{progress_info}BTC行情，使用 qlib 本地数据...")
                 print(f"{progress_info}BTC行情，使用 qlib 本地数据...")
                 df_all = get_qlib_local_data(chunk, days=90)
@@ -955,8 +971,11 @@ class MarketAdaptiveStrategy(BaseStrategy):
         """用市场宽度简单近似政体检测"""
         try:
             from data.market_data_client import get_ohlcv
+            from core.app_state import get_state
+            reg = get_state().reg
+            tiker = "SPY" if reg != "bt" else "BTCUSDT"
             df = get_ohlcv(
-                "SPY",
+                tiker,
                 (date.today() - timedelta(days=60)).isoformat(),
                 date.today().isoformat(),
             )

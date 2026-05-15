@@ -200,14 +200,31 @@ class YFinanceCollectorWorker(QRunnable):
         try:
             # 保持 threads 设置 和 _process_batch 中 download 一致
             # 否则容易造成崩溃
-            df = yf.download(
-                _get_calendar_ref_ticker(),
-                start=f"{start}", #.strftime("%Y-%m-%d"),
-                end=f"{end}", #.strftime("%Y-%m-%d"),
-                auto_adjust=False,
-                progress=False,
-                threads=True,
-            )
+            from core.app_state import get_state
+            from workers.binance_downloader import binance_download
+            reg = get_state().reg
+            if reg == "bt":
+                df = binance_download(
+                    _get_calendar_ref_ticker(),
+                    start=f"{start}", #.strftime("%Y-%m-%d"),
+                    end=f"{end}", #.strftime("%Y-%m-%d"),
+                    auto_adjust=False,
+                    progress=False,
+                    threads=True,
+                )
+            else:
+                import yfinance as yf
+                # yfinance 一次下载所有 ticker，速度远快于逐一下载
+                # tickers_str = " ".join(tickers)
+                df = yf.download(
+                    _get_calendar_ref_ticker(),
+                    start=f"{start}", #.strftime("%Y-%m-%d"),
+                    end=f"{end}", #.strftime("%Y-%m-%d"),
+                    auto_adjust=False,
+                    progress=False,
+                    threads=True,
+                )
+
             if df.empty:
                 self.signals.log_line.emit("获取空日历数据")
                 return []
@@ -289,15 +306,32 @@ class YFinanceCollectorWorker(QRunnable):
         dl_end = f'{date.today()}' #.strftime("%Y-%m-%d")
 
         try:
-            raw = yf.download(
-                tickers,
-                start=dl_start,
-                end=dl_end,
-                auto_adjust=False,
-                progress=False,
-                group_by="ticker",
-                threads=True,
-            )
+            from core.app_state import get_state
+            from workers.binance_downloader import binance_download
+            reg = get_state().reg
+            if reg == "bt":
+                raw = binance_download(
+                    tickers,
+                    start=dl_start,
+                    end=dl_end,
+                    auto_adjust=False,
+                    progress=False,
+                    group_by="ticker",
+                    threads=True,
+                )
+            else:
+                import yfinance as yf
+                # yfinance 一次下载所有 ticker，速度远快于逐一下载
+                # tickers_str = " ".join(tickers)
+                raw = yf.download(
+                    tickers,
+                    start=dl_start,
+                    end=dl_end,
+                    auto_adjust=False,
+                    progress=False,
+                    group_by="ticker",
+                    threads=True,
+                )
         except Exception as e:
             self.signals.log_line.emit(f"批量下载失败：{e}")
             return 0, tickers

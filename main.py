@@ -6,7 +6,7 @@ import sys
 import os
 from pathlib import Path
 from core.qlibhelper import _check_qlib_init
-import sys
+os.environ["LOKY_MAX_DEPTH"] = "1"
 
 # ── 确保项目根目录在 Python 路径中 ──────────────────────────
 ROOT = Path(__file__).parent

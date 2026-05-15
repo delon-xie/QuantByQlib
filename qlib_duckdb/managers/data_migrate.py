@@ -255,9 +255,8 @@ class DataMigrateManager:
     def migrate_freq(self, freq: str, use_temp_table: bool = True) -> Dict[str, Any]:
         """迁移指定频率的数据"""
         logger.info(f"Starting migration for freq: {freq}")
-        
-        if 1 == 1:
-        #try:
+
+        try:
             # 1. 创建表结构
             SchemaManager.create_all_tables_for_freq(self.reg, freq)
             
@@ -344,18 +343,18 @@ class DataMigrateManager:
                 "status": "success"
             }
             
-        #except Exception as e:
-        #    logger.error(f"Failed to migrate freq {freq}: {e}")
+        except Exception as e:
+            logger.error(f"Failed to migrate freq {freq}: {e}")
             
-        #    # 清理临时表
-        #    if use_temp_table:
-        #        try:
-        #            with DuckDBConnection.get_connection(self.reg, read_only=False) as conn:
-        #                conn.execute(f"DROP TABLE IF EXISTS temp_feature_{freq}", fetch=False)
-        #        except:
-        #            pass
+            # 清理临时表
+            if use_temp_table:
+                try:
+                    with DuckDBConnection.get_connection(self.reg, read_only=False) as conn:
+                        conn.execute(f"DROP TABLE IF EXISTS temp_feature_{freq}", fetch=False)
+                except:
+                    pass
             
-        #    raise MigrationError(f"Migration failed for freq {freq}: {e}")
+            raise MigrationError(f"Migration failed for freq {freq}: {e}")
     
     def migrate_all_freqs(self, freqs: List[str] = None) -> Dict[str, Dict]:
         """迁移所有频率数据"""

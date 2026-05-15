@@ -20,67 +20,7 @@ from typing import Optional
 
 import pandas as pd
 from loguru import logger
-
-# -- binance 历史行情支持 ----------------
-import pandas as pd
-from binance.client import Client
-from datetime import datetime, timedelta
-import time
-
-def get_crypto_data_binance(ticker: str, start_date: str, end_date: str, interval: str = "1d") -> pd.DataFrame:
-    """
-    通过 Binance API 获取加密货币数据
-    """
-    try:
-        # 初始化客户端（公共API不需要密钥）
-        client = Client("", "")
-        
-        # 转换时间格式
-        start_ts = int(pd.Timestamp(start_date).timestamp() * 1000)
-        end_ts = int(pd.Timestamp(end_date).timestamp() * 1000)
-        
-        # 获取K线数据
-        klines = client.get_historical_klines(
-            symbol=ticker.replace("USDT", "USDT"),  # 确保格式正确
-            interval=interval,
-            start_str=start_ts,
-            end_str=end_ts
-        )
-        
-        if not klines:
-            return None
-        
-        # 转换为DataFrame
-        df = pd.DataFrame(klines, columns=[
-            'open_time', 'open', 'high', 'low', 'close', 'volume',
-            'close_time', 'quote_asset_volume', 'number_of_trades',
-            'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
-        ])
-        
-        # 转换数据类型
-        df['open_time'] = pd.to_datetime(df['open_time'], unit='ms')
-        df['close_time'] = pd.to_datetime(df['close_time'], unit='ms')
-        
-        numeric_cols = ['open', 'high', 'low', 'close', 'volume', 
-                       'quote_asset_volume', 'taker_buy_base_asset_volume', 
-                       'taker_buy_quote_asset_volume']
-        df[numeric_cols] = df[numeric_cols].astype(float)
-        df[['number_of_trades']] = df[['number_of_trades']].astype(int)
-        
-        # 设置索引
-        df.set_index('open_time', inplace=True)
-        df.index.name = 'date'
-        
-        # 重命名列
-        df = df[['open', 'high', 'low', 'close', 'volume']]
-        df.columns = [c.lower() for c in df.columns]
-        
-        logger.debug(f"[MarketData] {ticker} via Binance API，{len(df)} 条")
-        return df
-        
-    except Exception as e:
-        logger.debug(f"[MarketData] Binance API 失败 {ticker}：{e}")
-        return None
+from workers.binance_downloader import get_crypto_data_binance
 
 # ── OHLCV 历史行情 ────────────────────────────────────────────
 
