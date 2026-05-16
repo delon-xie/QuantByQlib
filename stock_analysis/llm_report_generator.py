@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 # ── 配置 ─────────────────────────────────────────────────────
 
 DEFAULT_MODEL         = "claude-opus-4-6"
-DEFAULT_DEEPSEEK_MODEL = "deepseek-chat"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEFAULT_MAX_TOKENS    = 1500
 
 _SYSTEM_PROMPT = """你是一位专业的美股量化投资分析师，擅长将技术分析、基本面指标和市场情绪综合成清晰可执行的交易建议。
@@ -231,7 +231,7 @@ class LLMReportGenerator:
             "5. **风险提示**\n"
             "6. **作战计划**（入场区间、止损位、持仓建议）\n\n"
             "⚠️ 重要约束：\n"
-            "- \u82e5\u67d0\u7ae0\u8282\u6240\u9700\u6570\u636e\u5728\u4e0a\u65b9\u672a\u63d0\u4f9b\uff0c\u8bf7\u6ce8\u660e\u300c\u6570\u636e\u4e0d\u8db3\uff0c\u65e0\u6cd5\u8bc4\u4f30\u300d\uff0c\u7981\u6b62\u7f16\u9020\u3002\n"
+            "- 若某章节所需数据在上方未提供，请注明「数据不足，无法评估」，禁止编造。\n"
             "- 所有价格数字必须来源于上方提供的实际数据，不得凭空生成。\n"
             "- 不得引用上方未出现的任何新闻、事件、财报或机构观点。"
         )

@@ -62,3 +62,6 @@ duckdb>=1.5.2
 pytest 
 pytest-cov
 python-binance
+PyQt6-WebEngine 
+markdown 
+Pygments

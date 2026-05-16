@@ -308,7 +308,21 @@ class QlibToDuckDBExporter:
                 '$close': 'close',
                 '$low': 'low',
                 '$high': 'high',
-                '$volume': 'volume'
+                '$volume': 'volume',
+                '$factor': 'factor',
+                
+                # 常见技术指标列
+                '$vwap': 'vwap',            #成交量加权平均价
+                '$body': 'body',            # abs(Close - Open)
+                '$body_abs': 'body_abs',    # abs(Close - Open)
+                '$range': 'range',          # High - Low
+                '$change': 'change',        # Close - Previous Close
+                #crypto列
+                '$quote_volume': 'quote_volume',
+                '$taker_buy_base': 'taker_buy_base',
+                '$trade_count': 'trade_count',
+                #中国市场
+                '$adjclose': 'adjclose',
             }
             
             conn = self._get_connection(read_only=False)

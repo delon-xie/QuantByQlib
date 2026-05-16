@@ -12,13 +12,13 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QScrollArea, QSizePolicy,
-    QProgressBar, QStackedWidget, QTextEdit,
+    QProgressBar, QStackedWidget, QTextEdit, QMainWindow
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThreadPool, QObject, pyqtSlot
 from PyQt6.QtGui import QFont
 
 from ui.theme import COLORS
-
+from loguru import logger
 
 class _SignalBadge(QLabel):
     """彩色信号徽章"""
@@ -234,7 +234,6 @@ class StockDetailPanel(QWidget):
         if ticker != self._current_ticker:
             return
         self._last_report = report   # 保存供 AI 报告按钮使用
-        from loguru import logger
         logger.info(
             f"[DetailPanel] {ticker} 收到结果："
             f"overall.score={report.overall.score if report.overall else 'N/A'}，"
@@ -768,12 +767,14 @@ class StockDetailPanel(QWidget):
         ai_btn.setObjectName("btn_secondary")
         ai_btn.setMinimumHeight(36)
         ai_btn.clicked.connect(lambda: self._request_ai_report(ticker))
+        ai_btn.setProperty("actionKey", "cached")
+        self._ai_btn = ai_btn
         btn_row.addWidget(ai_btn)
 
         self._content_layout.addLayout(btn_row)
 
         # AI 报告展示区（初始隐藏，点击按钮后展开）
-        self._ai_report_label = _SectionTitle("AI 分析报告（Claude）")
+        self._ai_report_label = _SectionTitle("AI 分析报告")
         self._ai_report_label.hide()
         self._content_layout.addWidget(self._ai_report_label)
 
@@ -793,25 +794,51 @@ class StockDetailPanel(QWidget):
         """)
         self._ai_report_text.hide()
         self._content_layout.addWidget(self._ai_report_text)
+        
+        from ui.components.md_preview_only import MDPreviewOnly
+        self._ai_report_viewer = MDPreviewOnly()
+        self._ai_report_viewer.hide()
+        self._content_layout.addWidget(self._ai_report_viewer)
 
     def _request_ai_report(self, ticker: str) -> None:
         """启动后台 worker 生成 AI 分析报告（流式）"""
         if not hasattr(self, "_last_report") or self._last_report is None:
             return
 
-        self._ai_report_label.show()
-        self._ai_report_text.show()
-        self._ai_report_text.setPlainText("正在生成 AI 分析报告，请稍候...")
+        from services.report_writer import ReportWriter
+        from ui.components.md_preview_only import MDPreviewOnly
+        
+        writer = ReportWriter()
+        report_content = writer.get_report(ticker)
+        
+        if self._ai_btn.property("actionKey") == "cached" and report_content != None and len(report_content) > 0:
+            #显示缓存
+            self._ai_btn.setProperty("actionKey", "nocache")
+            self._ai_btn.setText("🤖 重新生成 AI 分析报告")
+            self._ai_report_label.hide()
+            
+            if self._ai_report_text != None and self._ai_report_text.isHidden() == False:
+                self._ai_report_text.hide()
+            self._render_airesult(report_content)
+        else:
+            self._ai_btn.setProperty("actionKey", "cached")
+            self._ai_btn.setText("🤖 AI 分析报告")
+            self._ai_report_label.show()
+            self._ai_report_text.show()
+            self._ai_report_text.setPlainText("正在生成 AI 分析报告，请稍候...")
 
-        from workers.llm_report_worker import LLMReportWorker
-        worker = LLMReportWorker(self._last_report)
-        worker.signals.chunk.connect(self._on_ai_chunk)
-        worker.signals.finished.connect(self._on_ai_finished)
-        worker.signals.error.connect(self._on_ai_error)
-        QThreadPool.globalInstance().start(worker)
+            from workers.llm_report_worker import LLMReportWorker
+            worker = LLMReportWorker(self._last_report)
+            worker.signals.chunk.connect(self._on_ai_chunk)
+            worker.signals.finished.connect(self._on_ai_finished)
+            worker.signals.error.connect(self._on_ai_error)
+            QThreadPool.globalInstance().start(worker)
 
     def _on_ai_chunk(self, ticker: str, chunk: str) -> None:
         """流式接收文本块"""
+        if self._ai_report_viewer != None and self._ai_report_viewer.isHidden() == False:
+            self._ai_report_viewer.hide()
+        
         if ticker != self._current_ticker:
             return
         current = self._ai_report_text.toPlainText()
@@ -828,6 +855,9 @@ class StockDetailPanel(QWidget):
         if ticker != self._current_ticker:
             return
         logger.debug(f"AI 报告生成完成：{ticker}，{len(full_text)} 字符")
+        
+        # 切换到浏览器
+        self._render_airesult(full_text)
 
     def _on_ai_error(self, ticker: str, msg: str) -> None:
         if ticker != self._current_ticker:
@@ -852,3 +882,21 @@ class StockDetailPanel(QWidget):
         sep.setFrameShape(QFrame.Shape.HLine)
         sep.setStyleSheet(f"color:{COLORS['border']}; margin:4px 0;")
         self._content_layout.addWidget(sep)
+    
+    def get_mainwindow(self) -> QMainWindow | None:
+        """获取控件所在的 MainWindow"""
+        parent = self.parent()
+        while parent is not None:
+            if isinstance(parent, QMainWindow):
+                return parent
+            parent = parent.parent()
+        return None
+    def _render_airesult(self, full_content: str) -> None:
+        # AI 报告展示区（初始隐藏，点击按钮后展开）
+        from ui.components.md_preview_only import MDPreviewOnly
+        
+        if self._ai_report_text != None and self._ai_report_text.isHidden() == False:
+            self._ai_report_text.hide()
+        
+        self._ai_report_viewer.set_markdown(full_content)
+        self._ai_report_viewer.show()

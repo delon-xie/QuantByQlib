@@ -8,6 +8,18 @@ from pathlib import Path
 from core.qlibhelper import _check_qlib_init
 os.environ["LOKY_MAX_DEPTH"] = "1"
 
+
+# for WebEngine
+# ========== 第1步：必须放在最前面 ==========
+# 设置环境变量
+os.environ["QT_QPA_PLATFORM"] = "cocoa"  # macOS
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--single-process"  # 解决共享上下文问题
+
+# 导入 QtCore 并设置属性
+from PyQt6.QtCore import QCoreApplication, Qt
+QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
+
+
 # ── 确保项目根目录在 Python 路径中 ──────────────────────────
 ROOT = Path(__file__).parent
 if str(ROOT) not in sys.path:
@@ -49,6 +61,15 @@ def main() -> int:
     from PyQt6.QtWidgets import QApplication
     from PyQt6.QtCore import Qt
     from PyQt6.QtGui import QIcon
+    
+    # 1. 设置环境变量
+    os.environ["QT_QPA_PLATFORM"] = "cocoa"  # macOS
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-gpu"
+
+    # 2. 设置 WebEngine 共享上下文
+    from PyQt6.QtCore import QCoreApplication, Qt
+    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
+
     from core.app_state import get_state
     reg_name = get_state().reg_name
 

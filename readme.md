@@ -1,6 +1,6 @@
 # QuantByQlib
 
-> **面向散户的 AI 量化辅助决策桌面应用（美股 / A股 / 港股 / Crypto )**
+> **面向散户的 AI 量化辅助决策桌面应用，目前已支持（美股 / A股 / 港股 / Crypto )**
 > **[计划支持](台股 / 日股 / 韩股）**
 
 [readme english](readme.en.md)

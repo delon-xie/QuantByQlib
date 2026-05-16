@@ -170,7 +170,7 @@ class ReportWriter:
             # {ticker} 个股 AI 分析报告
 
             > **生成日期**：{d.strftime('%Y年%m月%d日')}
-            > **分析工具**：QuantByQlib + Claude AI
+            > **分析工具**：QuantByQlib + Claude AI | DeepSeek AI
             > **免责声明**：本报告仅供参考，不构成投资建议。
 
             ---
@@ -184,3 +184,78 @@ class ReportWriter:
         from datetime import datetime
         ts = datetime.now().strftime("%H%M%S")
         return base.with_stem(f"{base.stem}_{ts}")
+    
+    def _latest_path(self, base: Path) -> Path:
+        """获取类似文件最新的文件（基于修改时间）"""
+        import re
+        
+        # 查找所有匹配的文件
+        parent_dir = base.parent
+        stem = base.stem.rstrip('_')
+        
+        # 查找所有相关文件
+        related_files = []
+        
+        # 添加基础文件（如果存在）
+        if base.exists():
+            related_files.append(base)
+        
+        # 查找带时间戳的文件
+        for file_path in parent_dir.glob(f"{stem}_*{base.suffix}"):
+            # 检查文件名格式: stem_六位数字.suffix
+            if file_path.suffix == base.suffix:
+                name_without_ext = file_path.stem
+                if name_without_ext.startswith(stem + '_'):
+                    suffix_part = name_without_ext[len(stem) + 1:]
+                    if len(suffix_part) == 6 and suffix_part.isdigit():
+                        # 验证是有效的时间
+                        hour = suffix_part[0:2]
+                        minute = suffix_part[2:4]
+                        second = suffix_part[4:6]
+                        if hour.isdigit() and minute.isdigit() and second.isdigit():
+                            if 0 <= int(hour) < 24 and 0 <= int(minute) < 60 and 0 <= int(second) < 60:
+                                related_files.append(file_path)
+        
+        if not related_files:
+            return base
+        
+        # 按修改时间排序，获取最新的文件
+        related_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return related_files[0]
+    
+    def get_report(self,
+        ticker: str,
+        trade_date: Optional[date] = None,
+    ) -> str:
+        """
+        读取个股 AI 分析报告。
+        路径：reports/YYYYMMDD/{TICKER}_analysis.md
+        若同日已存在，追加时间戳后缀而非覆盖。
+        """
+        d = trade_date or date.today()
+        day_dir = self._root / d.strftime("%Y%m%d")
+        day_dir.mkdir(parents=True, exist_ok=True)
+
+        base_path = day_dir / f"{ticker.upper()}_analysis.md"
+        file_path = self._latest_path(base_path)
+
+        path = Path(file_path) if isinstance(file_path, str) else file_path
+    
+        if not path.exists():
+            return None
+        
+        if not path.is_file():
+            return None
+        
+        try:
+            # 尝试其他常见编码
+            common_encodings = ['utf-8', 'utf-8-sig', 'gbk', 'gb2312', 'latin-1', 'cp1252']
+            
+            for enc in common_encodings:
+                try:
+                    with open(path, 'r', encoding=enc) as f:
+                        return f.read()
+                except UnicodeDecodeError:
+                    continue
+        except UnicodeDecodeError as e:
+            return None
