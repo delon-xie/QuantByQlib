@@ -74,15 +74,20 @@ class ResultsPage(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
 
         self._table = QTableWidget()
-        self._table.setColumnCount(5)
-        self._table.setHorizontalHeaderLabels(["排名", "股票", "Qlib 得分", "信号", "今日"])
+        #self._table.setColumnCount(5)
+        #self._table.setHorizontalHeaderLabels(["排名", "股票", "Qlib 得分", "信号", "今日"])
+        self._table.setColumnCount(4)
+        self._table.setHorizontalHeaderLabels(["股票", "Qlib 得分", "信号", "今日"])
         self._table.setAlternatingRowColors(True)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
         header = self._table.horizontalHeader()
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        for col in (0, 2, 3, 4):
+        #header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        #for col in (0, 2, 3, 4):
+        #    header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col in (1, 2, 3):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         self._table.itemSelectionChanged.connect(self._on_row_selected)
         left_layout.addWidget(self._table)
@@ -99,7 +104,7 @@ class ResultsPage(QWidget):
         self._detail_panel.run_strategy.connect(self._on_run_strategy)
         splitter.addWidget(self._detail_panel)
 
-        splitter.setSizes([420, 580])
+        splitter.setSizes([360, 640])
         layout.addWidget(splitter, stretch=1)
 
     def _connect_events(self) -> None:
@@ -130,8 +135,8 @@ class ResultsPage(QWidget):
             row = self._table.rowCount()
             self._table.insertRow(row)
 
-            rank_item = QTableWidgetItem(str(i + 1))
-            rank_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            #rank_item = QTableWidgetItem(str(i + 1))
+            #rank_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
             ticker_item = QTableWidgetItem(item.get("ticker", "--"))
             bold_font = QFont()
@@ -160,8 +165,11 @@ class ResultsPage(QWidget):
             change_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             change_item.setForeground(QColor(change_color))
 
+            #for col, cell in enumerate(
+            #    [rank_item, ticker_item, score_item, signal_item, change_item]
+            #):
             for col, cell in enumerate(
-                [rank_item, ticker_item, score_item, signal_item, change_item]
+                [ticker_item, score_item, signal_item, change_item]
             ):
                 self._table.setItem(row, col, cell)
 
@@ -172,18 +180,19 @@ class ResultsPage(QWidget):
         if not rows:
             return
         row = self._table.currentRow()
-        ticker_item = self._table.item(row, 1)
-        score_item  = self._table.item(row, 2)
+        ticker_item = self._table.item(row, 0)
+        score_item  = self._table.item(row, 1)
         if not ticker_item:
             return
 
         ticker = ticker_item.text()
         score  = float(score_item.text()) if score_item else None
         # 读取 Qlib 信号列（第3列）和排名（第0列）
-        signal_item = self._table.item(row, 3)
-        rank_item   = self._table.item(row, 0)
+        signal_item = self._table.item(row, 2)
+        #rank_item   = self._table.item(row, 0)
         qlib_signal = signal_item.text() if signal_item else None
-        qlib_rank   = int(rank_item.text()) if rank_item else None
+        #qlib_rank   = int(rank_item.text()) if rank_item else None
+        qlib_rank   = None
 
         # 直接加载个股详情面板（不经过事件总线，避免双重触发）
         self._detail_panel.load(ticker, quant_score=score,

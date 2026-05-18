@@ -35,9 +35,9 @@ MARKETS = [
 MARKET_RULES: dict[str, Pattern] = {
     "cn": re.compile(r"^(sh|sz|bj)\d{6}$"),           # A 股
     "hk": re.compile(r"^\d{4,5}\.HK$"),               # 港股
-    "tw": re.compile(r"^tw\d{4,6}$"),                 # 台股
-    "jp": re.compile(r"^jp\d{4}$"),                   # 日股
-    "kr": re.compile(r"^kr\d{6}$"),                   # 韩股
+    "tw": re.compile(r"^\d{4}\.TW$"),                 # 台股
+    "jp": re.compile(r"^\d{4}\.T$"),                  # 日股
+    "kr": re.compile(r"^`^\d{6}\.(KS|KQ)$`"),         # 韩股
     "us": re.compile(r"^[A-Z]+([-.][A-Z0-9]+)?$"),    # 美股
     "bt": re.compile(r"^[A-Z]+$"),                    # Crypto
 }
@@ -345,3 +345,47 @@ def qlib_safeinit_duckdb(qlib_data : str):
     QLIB_INIT_STATUS["inited"] = True
     
     print(f"初始化Duckdb:{qlib_data}")
+    
+import re
+
+def normalize_cn_tickers(tickers):
+    """
+    将中国区股票代码 (sh|sz|bj|SH|SZ|BJ+6位数字)
+    转换为 Yahoo Finance 格式 (6位数字.SS|SZ|BJ)
+
+    支持：
+    - 单个字符串
+    - 逗号分隔字符串
+    - list / tuple
+    """
+
+    if isinstance(tickers, str):
+        tickers = [t.strip() for t in tickers.split(",") if t.strip()]
+
+    if not isinstance(tickers, (list, tuple)):
+        raise TypeError("tickers 必须是 str、list 或 tuple")
+
+    yahoo_tickers = []
+    pattern = re.compile(r'^(sh|sz|bj|SH|SZ|BJ)(\d{6})$', re.IGNORECASE)
+
+    suffix_map = {
+        "sh": "SS",
+        "sz": "SZ",
+        "bj": "BJ",
+        "SH": "SS",
+        "SZ": "SZ",
+        "BJ": "BJ"
+    }
+
+    for t in tickers:
+        t = t.lower()
+        m = pattern.match(t)
+        if not m:
+            # 已经是 yahoo 格式或无法识别，原样保留
+            yahoo_tickers.append(t.upper())
+            continue
+
+        prefix, code = m.groups()
+        yahoo_tickers.append(f"{code}.{suffix_map[prefix]}")
+
+    return yahoo_tickers

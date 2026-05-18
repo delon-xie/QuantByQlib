@@ -133,6 +133,9 @@ class ChartExportWorker(QRunnable):
                                 )
                             else:
                                 import yfinance as yf
+                                from core.qlibhelper import normalize_cn_tickers
+                                if reg == "cn":
+                                    ticker = normalize_cn_tickers(ticker)[0]
                                 # yfinance 一次下载所有 ticker，速度远快于逐一下载
                                 # tickers_str = " ".join(tickers)
                                 df = yf.download(

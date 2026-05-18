@@ -77,10 +77,15 @@ class _FetchWorker(QRunnable):
             )
         else:
             import yfinance as yf
+            from core.qlibhelper import normalize_cn_tickers
+            if reg == "cn":
+                ticker = normalize_cn_tickers(self.ticker)
+            else:
+                ticker = self.ticker
             # yfinance 一次下载所有 ticker，速度远快于逐一下载
             # tickers_str = " ".join(tickers)
             df = yf.download(
-                self.ticker, 
+                ticker, 
                 progress=False, 
                 auto_adjust=True, 
                 threads=True, 

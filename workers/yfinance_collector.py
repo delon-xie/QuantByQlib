@@ -214,10 +214,15 @@ class YFinanceCollectorWorker(QRunnable):
                 )
             else:
                 import yfinance as yf
+                from core.qlibhelper import normalize_cn_tickers
+                if reg == "cn":
+                    tickers = normalize_cn_tickers(_get_calendar_ref_ticker())
+                else:
+                    tickers = _get_calendar_ref_ticker()
                 # yfinance 一次下载所有 ticker，速度远快于逐一下载
                 # tickers_str = " ".join(tickers)
                 df = yf.download(
-                    _get_calendar_ref_ticker(),
+                    tickers,
                     start=f"{start}", #.strftime("%Y-%m-%d"),
                     end=f"{end}", #.strftime("%Y-%m-%d"),
                     auto_adjust=False,
@@ -321,6 +326,9 @@ class YFinanceCollectorWorker(QRunnable):
                 )
             else:
                 import yfinance as yf
+                from core.qlibhelper import normalize_cn_tickers
+                if reg == "cn":
+                    tickers = normalize_cn_tickers(tickers)
                 # yfinance 一次下载所有 ticker，速度远快于逐一下载
                 # tickers_str = " ".join(tickers)
                 raw = yf.download(

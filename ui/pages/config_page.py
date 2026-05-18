@@ -111,7 +111,7 @@ class ConfigPage(QWidget):
 
         self._llm_combo = QComboBox()
         self._llm_combo.addItems([
-            "deepseek-chat          (DeepSeek — 低成本，适合高频运行)",
+            "deepseek-v4-flash          (DeepSeek — 低成本，适合高频运行)",
             "deepseek-reasoner      (DeepSeek R1 — 推理增强，更严格遵循约束)",
             "claude-opus-4-6        (Claude Opus 4.6 — 最强创新力，最高质量)",
             "claude-sonnet-4-6      (Claude Sonnet 4.6 — 均衡性价比)",
@@ -382,7 +382,7 @@ class ConfigPage(QWidget):
 
     # model id 与下拉项索引的映射
     _LLM_MODEL_IDS = [
-        "deepseek-chat",
+        "deepseek-v4-flash",
         "deepseek-reasoner",
         "claude-opus-4-6",
         "claude-sonnet-4-6",
@@ -407,8 +407,8 @@ class ConfigPage(QWidget):
                     inp.setText(val)
                     self._key_status[env_key].setText("🟡")
             # 恢复 LLM 选择
-            saved_model = vals.get("CHAT_MODEL", "deepseek-chat")
-            model_id = saved_model.split("/")[-1]  # 兼容 "deepseek/deepseek-chat" 格式
+            saved_model = vals.get("CHAT_MODEL", "deepseek-v4-flash")
+            model_id = saved_model.split("/")[-1]  # 兼容 "deepseek/deepseek-v4-flash" 格式
             if model_id in self._LLM_MODEL_IDS:
                 self._llm_combo.setCurrentIndex(self._LLM_MODEL_IDS.index(model_id))
             # 恢复导出目录

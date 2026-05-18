@@ -169,6 +169,11 @@ class SentimentAnalyzer:
         """直接用 yfinance 获取新闻（免费，无需 API Key）"""
         try:
             import yfinance as yf
+            from core.app_state import get_state
+            reg = get_state().reg
+            from core.qlibhelper import normalize_cn_tickers
+            if reg == "cn":
+                ticker = normalize_cn_tickers(ticker)[0]
             raw_news = yf.Ticker(ticker).news
             if not raw_news:
                 return []

@@ -171,7 +171,7 @@ def setup_ai_client(provider: str = "auto"):
                 base_url="https://api.deepseek.com/v1"
             )
             logger.info("DeepSeek client initialized")
-            return {"client": client, "provider": "deepseek", "model": "deepseek-chat"}
+            return {"client": client, "provider": "deepseek", "model": "deepseek-v4-flash"}
             
         elif provider == "anthropic":
             from anthropic import Anthropic

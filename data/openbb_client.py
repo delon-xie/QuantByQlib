@@ -127,6 +127,11 @@ def _get_realtime_quote_yf(ticker: str) -> Optional[dict]:
     try:
         import yfinance as yf
         import pytz
+        from core.app_state import get_state
+        reg = get_state().reg
+        from core.qlibhelper import normalize_cn_tickers
+        if reg == "cn":
+            ticker = normalize_cn_tickers(ticker)[0]
         t = yf.Ticker(ticker.lstrip("$"))  # 兼容带 $ 前缀的 ticker
 
         last_price = None

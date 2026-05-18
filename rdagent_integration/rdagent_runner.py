@@ -83,7 +83,7 @@ class RDAgentRunner:
 
         # 4. 构建环境变量
         env = self._build_env()
-        chat_model = env.get("CHAT_MODEL", "deepseek-chat")
+        chat_model = env.get("CHAT_MODEL", "deepseek-v4-flash")
         self._log_cb(f"[INFO] 使用 LLM：{chat_model}")
 
         # 检查所选 LLM 对应的 Key 是否存在
@@ -244,7 +244,7 @@ class RDAgentRunner:
                 env[key] = val
 
         # RD-Agent 专用配置
-        env.setdefault("CHAT_MODEL", "deepseek-chat")
+        env.setdefault("CHAT_MODEL", "deepseek-v4-flash")
         env.setdefault("RD_AGENT_WORKSPACE", "/workspace")
 
         return env

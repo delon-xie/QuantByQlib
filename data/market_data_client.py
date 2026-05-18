@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from re import I
 from typing import Optional
 
 import pandas as pd
@@ -72,6 +73,11 @@ def get_ohlcv_period(
     """
     end = date.today().isoformat()
     start = (date.today() - timedelta(days=period_days + 30)).isoformat()
+    from core.app_state import get_state
+    reg = get_state().reg
+    from core.qlibhelper import normalize_cn_tickers
+    if reg == "cn":
+        ticker = normalize_cn_tickers(ticker)[0]
     return get_ohlcv(ticker, start, end)
 
 
@@ -133,6 +139,11 @@ def _fetch_via_yfinance_direct(
     """直接调用 yfinance Ticker.history()，比 download() 更稳定，绕过 OpenBB 中间层。"""
     try:
         import yfinance as yf
+        from core.app_state import get_state
+        reg = get_state().reg
+        from core.qlibhelper import normalize_cn_tickers
+        if reg == "cn":
+            ticker = normalize_cn_tickers(ticker)[0]
         t = yf.Ticker(ticker)
         df = t.history(start=start_date, end=end_date, auto_adjust=True)
         if df is not None and not df.empty:

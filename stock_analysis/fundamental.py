@@ -188,6 +188,11 @@ class FundamentalAnalyzer:
         """用 yfinance .info 填充基本面（免费，无需 API Key）"""
         try:
             import yfinance as yf
+            from core.app_state import get_state
+            reg = get_state().reg
+            from core.qlibhelper import normalize_cn_tickers
+            if reg == "cn":
+                ticker = normalize_cn_tickers(ticker)[0]
             info = yf.Ticker(ticker).info
             if not info or info.get("trailingPE") is None and info.get("marketCap") is None:
                 return

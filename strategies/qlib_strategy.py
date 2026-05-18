@@ -271,6 +271,9 @@ def download_or_get_local_data(chunk, cb, progress_info=""):
             )
         else:
             import yfinance as yf
+            from core.qlibhelper import normalize_cn_tickers
+            if reg == "cn":
+                chunk = normalize_cn_tickers(chunk)
             # yfinance 一次下载所有 ticker，速度远快于逐一下载
             # tickers_str = " ".join(tickers)
             df_all = yf.download(

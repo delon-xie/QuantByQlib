@@ -15,13 +15,14 @@ from ui.components.regionlabel import RegionLabel
 # 导航项定义：(页面键, 图标文字, 显示标签)
 NAV_ITEMS = [
     ("dashboard",   "📊", "仪表盘"),
-    ("screening",   "⚙️",  "量化选股"),
-    ("results",     "📋", "选股结果"),
-    ("portfolio",   "💼", "持仓管理"),
+    ("universe",    "🗂️", "股票池管理"),
+    ("screening",   "🔍",  "量化选股"),
+    ("results",     "🤖", "选股结果"), #📄
+    ("portfolio",   "💰", "持仓管理"), #💼
     ("goal",        "🎯", "盈利目标"),
     ("backtest",    "📈", "策略回测"),
-    ("signals",     "⚡", "交易信号"),
-    ("factor",      "🤖", "因子发现"),
+    ("signals",     "🔔", "交易信号"), #⚡
+    ("factor",      "🔬", "因子发现"),
     ("config",      "⚙️",  "参数配置"),
     ("logs",        "📋", "运行日志"),
 ]

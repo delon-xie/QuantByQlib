@@ -24,6 +24,7 @@ from ui.pages.signals_page    import SignalsPage
 from ui.pages.factor_page     import FactorPage
 from ui.pages.config_page     import ConfigPage
 from ui.pages.logs_page       import LogsPage
+from ui.pages.poolconfig_page import PoolConfigPage
 from ui.theme import COLORS
 from ui.components.market_combo import MarketComboBox
 from utils.logger import logger
@@ -104,6 +105,7 @@ class MainWindow(QMainWindow):
             "factor":    FactorPage,
             "config":    ConfigPage,
             "logs":      LogsPage,
+            "universe":  PoolConfigPage,
         }
         for key, PageClass in page_classes.items():
             page = PageClass()

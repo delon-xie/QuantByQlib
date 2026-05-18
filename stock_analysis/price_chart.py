@@ -45,6 +45,11 @@ class PriceChart:
         任何数据源失败时返回 available=False 的占位对象
         """
         ticker = ticker.upper().strip()
+        from core.app_state import get_state
+        reg = get_state().reg
+        from core.qlibhelper import normalize_cn_tickers
+        if reg == "cn":
+            ticker = normalize_cn_tickers(ticker)[0]
         df = self._fetch_ohlcv(ticker, period_days)
 
         if df is None or df.empty or len(df) < 5:

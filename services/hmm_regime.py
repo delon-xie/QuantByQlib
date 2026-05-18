@@ -20,6 +20,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 from loguru import logger
+from yfinance import ticker
 
 
 # ── 政体标签映射 ────────────────────────────────────────────────────────────
@@ -152,10 +153,15 @@ def _fetch_spy_data(anchor: date, lookback_years: int) -> Optional[pd.DataFrame]
             )
         else:
             import yfinance as yf
+            from core.qlibhelper import normalize_cn_tickers, _get_calendar_ref_ticker
+            if reg == "cn":
+                sticker = normalize_cn_tickers(_get_calendar_ref_ticker())
+            else:
+                sticker = _get_calendar_ref_ticker()
             # yfinance 一次下载所有 ticker，速度远快于逐一下载
             # tickers_str = " ".join(tickers)
             raw = yf.download(
-                "SPY", 
+                sticker, 
                 start=start.isoformat(), 
                 end=anchor.isoformat(),
                 progress=False, 

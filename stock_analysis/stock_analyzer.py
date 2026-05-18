@@ -83,6 +83,11 @@ class StockAnalyzer:
         返回 StockReport，overall.available=False 表示数据严重不足
         """
         ticker = ticker.upper().strip()
+        from core.app_state import get_state
+        reg = get_state().reg
+        from core.qlibhelper import normalize_cn_tickers
+        if reg == "cn":
+            ticker = normalize_cn_tickers(ticker)[0]
         logger.info(f"开始分析 {ticker}（并行五维度）")
 
         tech_result   = None

@@ -444,6 +444,11 @@ def sync_from_api(args):
         
         elif data_source == "yfinance":
             # yfinance
+            from core.app_state import get_state
+            reg = get_state().reg
+            from core.qlibhelper import normalize_cn_tickers
+            if reg == "cn":
+                symbol = normalize_cn_tickers(symbol)
             ticker = yf.Ticker(symbol)
             
             if freq == "day":
