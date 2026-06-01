@@ -100,8 +100,6 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
 #sidebar {{
     background-color: {c['bg_sidebar']};
     border-right: 1px solid {c['border']};
-    min-width: 200px;
-    max-width: 220px;
 }}
 
 #sidebar_logo {{
@@ -137,6 +135,51 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
         stop:0 {c['primary_dark']}, stop:1 {c['primary']});
     color: white;
     font-weight: bold;
+}}
+
+#nav_btn_active {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {c['primary_dark']}, stop:1 {c['primary']});
+    border: none;
+    border-radius: 8px;
+    text-align: left;
+    padding: 10px 16px;
+    color: white;
+    font-size: 13px;
+    font-weight: bold;
+    margin: 2px 8px;
+}}
+
+/* 侧边栏导航分组标题 */
+#nav_group_header {{
+    background: transparent;
+    border: none;
+    text-align: left;
+    padding: 6px 16px;
+    color: {c['text_muted']};
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}}
+
+#nav_group_header:hover {{
+    color: {c['text_secondary']};
+}}
+
+#sidebar_toggle {{
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: {c['text_muted']};
+    font-size: 14px;
+    padding: 4px;
+    margin: 0 8px;
+}}
+
+#sidebar_toggle:hover {{
+    background-color: {c['bg_card_hover']};
+    color: {c['text_primary']};
 }}
 
 /* ── 主内容区 ─────────────────────────────────────────── */

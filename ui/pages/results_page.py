@@ -46,6 +46,10 @@ class ResultsPage(QWidget):
         self._signal_btn = QPushButton("⚡ 生成信号")
         self._signal_btn.clicked.connect(self._on_generate_signals)
         header_row.addWidget(self._signal_btn)
+
+        self._chart_btn = QPushButton("📊 股票图表")
+        self._chart_btn.clicked.connect(self._on_open_chart)
+        header_row.addWidget(self._chart_btn)
         layout.addLayout(header_row)
 
         # ── 筛选行 ────────────────────────────────────────────
@@ -248,3 +252,28 @@ class ResultsPage(QWidget):
     def _on_generate_signals(self) -> None:
         from core.event_bus import get_event_bus
         get_event_bus().navigate_to.emit("signals")
+
+    def _on_open_chart(self) -> None:
+        ticker = None
+        
+        if self._detail_panel._current_ticker:
+            ticker = self._detail_panel._current_ticker
+        else:
+            row = self._table.currentRow()
+            if row < 0 and self._table.rowCount() > 0:
+                row = 0
+                self._table.selectRow(0)
+            if row >= 0:
+                ticker_item = self._table.item(row, 0)
+                if ticker_item:
+                    ticker = ticker_item.text()
+        
+        if not ticker:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "提示", "请先搜索或选择一支股票")
+            return
+        
+        from core.event_bus import get_event_bus
+        bus = get_event_bus()
+        bus.navigate_to.emit("chart")
+        bus.stock_chart_requested.emit(ticker)

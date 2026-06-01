@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TradingView Advance Widget</title>
+  <link rel="stylesheet" href="css/chart.css">
+  <style>
+:root { --bg-main: #131722; --bg-panel: #1e222d; --text-primary: #d1d4dc; --text-secondary: #787b86; }
+#timeframe-bar {
+  position: absolute;
+  top: 8px;
+  left: 60px;
+  z-index: 10;
+  display: flex;
+  gap: 2px;
+  background: #1e222d;
+  border-radius: 4px;
+  padding: 2px;
+}
+.tf-btn {
+  background: transparent;
+  border: none;
+  color: #787b86;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.4;
+}
+.tf-btn.active {
+  background: #2a2e39;
+  color: #d1d4dc;
+}
+.tf-btn:hover:not(.active) {
+  color: #b0b5be;
+}
+#symbol-bar {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#symbol-input {
+  background: #1e222d;
+  border: 1px solid #2a2e39;
+  color: #d1d4dc;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  width: 80px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+#load-btn {
+  background: #2a2e39;
+  border: none;
+  color: #d1d4dc;
+  padding: 4px 12px;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+#load-btn:hover {
+  background: #3a3e49;
+}
+#data-source-input {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#url-input {
+  background: #1e222d;
+  border: 1px solid #2a2e39;
+  color: #d1d4dc;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  width: 300px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+#url-input:focus {
+  outline: none;
+  border-color: #4a4e59;
+}
+#status {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 10;
+  font-size: 11px;
+  color: #787b86;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+#status.error {
+  color: #ef5350;
+}
+#status.success {
+  color: #26a69a;
+}
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="chart-area">
+      <div class="main-chart">
+        <div id="symbol-bar">
+          <input type="text" id="symbol-input" placeholder="股票代码" value="600666">
+          <button id="load-btn">加载</button>
+        </div>
+        <div id="timeframe-bar">
+          <button class="tf-btn active" data-tf="D">日线</button>
+          <button class="tf-btn" data-tf="W">周线</button>
+          <button class="tf-btn" data-tf="M">月线</button>
+        </div>
+        <div id="data-source-input">
+          <input type="text" id="url-input" placeholder="数据源URL" value="http://localhost:5000/api/stock">
+        </div>
+        <div id="mainChart" class="chart-container"></div>
+        <div id="status">等待加载数据...</div>
+      </div>
+      <div class="sub-charts" id="subCharts"></div>
+    </div>
+    <div class="indicator-panel" id="indicatorPanel"></div>
+  </div>
+
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+
+  <script>
+    var DATA_SOURCE_URL = 'http://localhost:5000/api/stock';
+
+    (function loadScripts() {
+      var TS = '?v=' + Date.now();
+      var scripts = [
+        'lightweight-charts5.2.0/dist/lightweight-charts.standalone.production.js',
+      ];
+      function load(src) {
+        return new Promise(function(resolve, reject) {
+          var s = document.createElement('script');
+          s.src = src + TS; s.onload = resolve; s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
+      async function loadAll() {
+        for (var i = 0; i < scripts.length; i++) {
+          try {
+            await load(scripts[i]);
+            console.log('Loaded:', scripts[i]);
+          } catch (e) {
+            console.warn('Failed to load:', scripts[i], e);
+          }
+        }
+        initApp();
+      }
+      loadAll();
+    })();
+
+    function initApp() {
+      try {
+        var mainContainer = document.getElementById('mainChart');
+        var subContainer = document.getElementById('subCharts');
+
+        var chart = LightweightCharts.createChart(mainContainer, {
+          layout: {
+            background: { type: 'solid', color: '#131722' },
+            textColor: '#d1d4dc',
+          },
+          grid: {
+            vertLines: { color: '#2a2e39' },
+            horzLines: { color: '#2a2e39' },
+          },
+          width: mainContainer.clientWidth,
+          height: mainContainer.clientHeight,
+          timeScale: {
+            timeVisible: true,
+            secondsVisible: false,
+          },
+          crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal,
+          },
+        });
+
+        var candleSeries = chart.addCandlestickSeries({
+          upColor: '#26a69a',
+          downColor: '#ef5350',
+          borderUpColor: '#26a69a',
+          borderDownColor: '#ef5350',
+          wickUpColor: '#26a69a',
+          wickDownColor: '#ef5350',
+        });
+
+        var volumeSeries = chart.addHistogramSeries({
+          color: '#26a69a',
+          priceFormat: { type: 'volume' },
+          priceScaleId: '',
+        });
+        volumeSeries.priceScale().applyOptions({
+          scaleMargins: { top: 0.8, bottom: 0 },
+        });
+
+        window.mainChart = chart;
+        window.candleSeries = candleSeries;
+        window.volumeSeries = volumeSeries;
+
+        chart.timeScale().fitContent();
+
+        var resizeObserver = new ResizeObserver(function(entries) {
+          if (entries.length === 0 || entries[0].target !== mainContainer) return;
+          var width = entries[0].contentRect.width;
+          var height = entries[0].contentRect.height;
+          chart.applyOptions({ width: width, height: height });
+        });
+        resizeObserver.observe(mainContainer);
+
+        var symbolInput = document.getElementById('symbol-input');
+        var urlInput = document.getElementById('url-input');
+        var loadBtn = document.getElementById('load-btn');
+        var statusEl = document.getElementById('status');
+
+        function setStatus(msg, type) {
+          statusEl.textContent = msg;
+          statusEl.className = type || '';
+        }
+
+        function parseDate(dateStr) {
+          var parts = dateStr.split('-');
+          return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])).getTime() / 1000;
+        }
+
+        function formatData(data) {
+          var candles = [];
+          var volumes = [];
+          for (var i = 0; i < data.items.length; i++) {
+            var item = data.items[i];
+            var time = parseDate(item.time);
+            candles.push({
+              time: time,
+              open: item.open,
+              high: item.high,
+              low: item.low,
+              close: item.close,
+            });
+            volumes.push({
+              time: time,
+              value: item.volume,
+              color: item.close >= item.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)',
+            });
+          }
+          return { candles: candles, volumes: volumes };
+        }
+
+        function loadData(code, url) {
+          setStatus('正在加载数据...', '');
+          var fetchUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'code=' + code;
+          fetch(fetchUrl)
+            .then(function(res) {
+              if (!res.ok) throw new Error('Network response was not ok');
+              return res.json();
+            })
+            .then(function(json) {
+              if (!json.success) throw new Error(json.message || 'Data load failed');
+              var formatted = formatData(json.data);
+              candleSeries.setData(formatted.candles);
+              volumeSeries.setData(formatted.volumes);
+              chart.timeScale().fitContent();
+              setStatus('数据加载成功: ' + json.data.items.length + ' 条', 'success');
+            })
+            .catch(function(err) {
+              console.error('Load error:', err);
+              setStatus('加载失败: ' + err.message, 'error');
+            });
+        }
+
+        loadBtn.addEventListener('click', function() {
+          var code = symbolInput.value.trim() || '600666';
+          var url = urlInput.value.trim() || DATA_SOURCE_URL;
+          loadData(code, url);
+        });
+
+        urlInput.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') {
+            loadBtn.click();
+          }
+        });
+
+        var tfBar = document.getElementById('timeframe-bar');
+        if (tfBar) {
+          tfBar.addEventListener('click', function(e) {
+            var btn = e.target.closest('.tf-btn');
+            if (!btn) return;
+            tfBar.querySelectorAll('.tf-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+          });
+        }
+
+        document.addEventListener('keydown', function(ev) {
+          if (ev.ctrlKey || ev.metaKey) {
+            switch (ev.key) {
+              case 'f': case 'F':
+                ev.preventDefault();
+                symbolInput.focus();
+                symbolInput.select();
+                break;
+              case 'Enter':
+                ev.preventDefault();
+                loadBtn.click();
+                break;
+            }
+          }
+        });
+
+        loadData(symbolInput.value.trim(), urlInput.value.trim());
+
+        console.log('=== TradingView Widget (URL Data Source) ===');
+
+      } catch (e) {
+        console.error('initApp failed:', e);
+      }
+    }
+  </script>
+
+  <script src="js/bridge-client.js?v=4"></script>
+  <script src="js/chart-manager.js?v=4"></script>
+  <script src="js/timeframe-controller.js?v=4"></script>
+</body>
+</html>

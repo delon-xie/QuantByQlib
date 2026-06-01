@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradingView Plus Chart</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: #131722;
+            color: #d1d4dc;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        .chart-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .main-chart, .sub-chart {
+            position: relative;
+            flex: 1;
+        }
+        
+        .chart-container {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .indicator-panel {
+            width: 300px;
+            background: #1e222d;
+            border-left: 1px solid #2a2e39;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #d1d4dc;
+        }
+        
+        .indicator-category {
+            margin-bottom: 15px;
+            border: 1px solid #2a2e39;
+            border-radius: 6px;
+            overflow: hidden;
+            background: #1e222d;
+        }
+        
+        .category-title {
+            background: #2a2e39;
+            padding: 8px 12px;
+            font-weight: bold;
+            font-size: 12px;
+            cursor: pointer;
+            user-select: none;
+            color: #d1d4dc;
+            transition: background 0.2s ease;
+        }
+        
+        .category-title:hover {
+            background: #363a45;
+        }
+        
+        .category-content {
+            padding: 8px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="chart-area">
+            <div class="main-chart">
+                <div id="mainChart" class="chart-container"></div>
+                <div id="mainLoading" class="loading">Loading main chart...</div>
+            </div>
+            <div class="sub-chart">
+                <div id="subChart" class="chart-container"></div>
+                <div id="subLoading" class="loading">Loading sub chart...</div>
+            </div>
+        </div>
+        
+        <div class="indicator-panel" id="indicatorPanel">
+            <!-- 指标面板将在这里动态生成 -->
+        </div>
+    </div>
+
+    <!-- 按顺序加载模块 -->
+    <script>
+            const modules = [
+                // ==================== 第三方库依赖 ====================
+                './../js/dist/lightweight-charts.standalone.production.js',  // Lightweight Charts 核心库
+                './../js/dist/oakscriptjs.umd.js',                           // OakscriptJS 脚本库
+                './../js/dist/lightweight-charts-indicators.umd.js',         // 指标计算库
+                
+                // ==================== 核心模块 ====================
+                './../js/core/chart_core.js',                // 图表核心 - 主图和副图管理
+                './../js/core/data_handler.js',              // 数据处理器 - 数据验证和转换
+                './../js/core/indicator_calculator.js',      // 指标计算器 - 指标算法实现
+                './../js/core/indicator_core.js',            // 指标核心 - 指标生命周期管理
+                './../js/core/event_manager.js',             // 事件管理器 - 全局事件分发
+                './../js/core/state_manager.js',             // 状态管理器 - 应用状态管理
+                
+                // ==================== 桥接模块 ====================
+                './../js/bridge/python_bridge.js',           // Python-JS 通信桥接
+                './../js/bridge/websocket_bridge.js',        // WebSocket 桥接（备用）
+                './../js/bridge/message_handler.js',         // 消息处理器
+                
+                // ==================== UI 模块 ====================
+                './../js/ui/indicator_panel.js',             // 指标面板 - 右侧面板
+                './../js/ui/tab_manager.js',                 // Tab页管理器
+                './../js/ui/common_indicators_tab.js',       // 常用指标Tab页
+                './../js/ui/advanced_indicators_tab.js',     // 高级指标Tab页
+                './../js/ui/parameter_settings_tab.js',      // 参数设置Tab页
+                './../js/ui/parameter_form.js',              // 参数表单生成器
+                './../js/ui/toolbar.js',                     // 工具栏组件
+                './../js/ui/context_menu.js',                // 上下文菜单
+                './../js/ui/theme_manager.js',               // 主题管理器
+                
+                // ==================== 工具模块 ====================
+                './../js/utils/logger.js',                   // 日志工具
+                './../js/utils/validator.js',                // 数据验证工具
+                './../js/utils/color_utils.js',              // 颜色工具
+                './../js/utils/date_utils.js',               // 日期工具
+                './../js/utils/math_utils.js',               // 数学工具
+                './../js/utils/storage.js',                  // 本地存储
+                
+                // ==================== 指标算法模块 ====================
+                './../js/indicators/moving_averages.js',     // 移动平均线类指标
+                './../js/indicators/oscillators.js',         // 振荡指标
+                './../js/indicators/momentum.js',            // 动量指标
+                './../js/indicators/trend.js',               // 趋势指标
+                './../js/indicators/volatility.js',          // 波动率指标
+                './../js/indicators/volume.js',              // 成交量指标
+                './../js/indicators/custom.js',              // 自定义指标
+                
+                // ==================== 特殊指标模块 ====================
+                './../js/indicators/special/profile.js',     // PROFILE 指标实现
+                './../js/indicators/special/combo.js',       // 组合指标
+                './../js/indicators/special/overlay.js',     // 叠加指标
+                
+                // ==================== 配置模块 ====================
+                './../js/config/indicator_config.js',        // 指标配置
+                './../js/config/chart_config.js',            // 图表配置
+                './../js/config/theme_config.js',            // 主题配置
+                
+                // ==================== 初始化模块 ====================
+                './../js/init.js'                           // 应用初始化
+            ];
+
+            // 智能模块加载器
+            (function loadModules() {
+                console.log('🚀 开始加载模块...');
+                
+                // 加载计数器
+                let loadedCount = 0;
+                let failedCount = 0;
+                const totalCount = modules.length;
+                
+                // 创建加载状态展示
+                const loadingStatus = document.createElement('div');
+                loadingStatus.id = 'loadingStatus';
+                loadingStatus.style.cssText = `
+                    position: fixed;
+                    top: 10px;
+                    right: 10px;
+                    background: rgba(0,0,0,0.8);
+                    color: white;
+                    padding: 8px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    z-index: 9999;
+                `;
+                document.body.appendChild(loadingStatus);
+                
+                // 更新加载状态
+                function updateStatus() {
+                    loadingStatus.textContent = `加载模块: ${loadedCount}/${totalCount}`;
+                }
+                
+                // 异步加载脚本
+                function loadScript(src) {
+                    return new Promise((resolve, reject) => {
+                        const script = document.createElement('script');
+                        script.src = src;
+                        script.onload = () => {
+                            loadedCount++;
+                            updateStatus();
+                            console.log(`✅ 加载成功: ${src}`);
+                            resolve();
+                        };
+                        script.onerror = () => {
+                            failedCount++;
+                            updateStatus();
+                            console.error(`❌ 加载失败: ${src}`);
+                            resolve(); // 继续加载其他模块
+                        };
+                        
+                        document.head.appendChild(script);
+                    });
+                }
+                
+                // 顺序加载所有模块
+                async function loadAll() {
+                    console.log(`📦 总共需要加载 ${totalCount} 个模块`);
+                    
+                    // 分组加载：先加载核心依赖
+                    const coreDeps = modules.slice(0, 3);
+                    const otherModules = modules.slice(3);
+                    
+                    // 1. 先加载核心依赖
+                    console.log('🔧 加载核心依赖...');
+                    for (const src of coreDeps) {
+                        await loadScript(src);
+                    }
+                    
+                    // 2. 并行加载其他模块（但控制并发数）
+                    console.log('🔧 加载其他模块...');
+                    const concurrentLimit = 3; // 并发限制
+                    for (let i = 0; i < otherModules.length; i += concurrentLimit) {
+                        const batch = otherModules.slice(i, i + concurrentLimit);
+                        await Promise.all(batch.map(src => loadScript(src)));
+                    }
+                    
+                    // 移除加载状态
+                    setTimeout(() => {
+                        document.body.removeChild(loadingStatus);
+                    }, 1000);
+                    
+                    // 输出总结
+                    console.log(`\n📊 模块加载总结:`);
+                    console.log(`   ✅ 成功: ${loadedCount}`);
+                    console.log(`   ❌ 失败: ${failedCount}`);
+                    console.log(`   📁 总数: ${totalCount}`);
+                    
+                    if (failedCount === 0) {
+                        console.log('🎉 所有模块加载完成！');
+                        
+                        // 初始化应用
+                        initializeChartApp();
+                    } else {
+                        console.warn(`⚠️ ${failedCount} 个模块加载失败，应用可能功能不全`);
+                        
+                        // 尝试继续初始化
+                        setTimeout(initializeChartApp, 500);
+                    }
+                }
+                
+                // 初始化应用
+                function initializeChartApp() {
+                    console.log('🚀 初始化图表应用...');
+                    
+                    // 检查必需模块
+                    const requiredModules = [
+                        'LightweightCharts',
+                        'ChartCore',
+                        'IndicatorCore',
+                        'pythonBridge'
+                    ];
+                    
+                    const missingModules = requiredModules.filter(
+                        module => !window[module]
+                    );
+                    
+                    if (missingModules.length > 0) {
+                        console.error('❌ 缺少必需模块:', missingModules);
+                        
+                        // 显示错误提示
+                        const errorDiv = document.createElement('div');
+                        errorDiv.style.cssText = `
+                            position: fixed;
+                            top: 50%;
+                            left: 50%;
+                            transform: translate(-50%, -50%);
+                            background: rgba(239, 83, 80, 0.9);
+                            color: white;
+                            padding: 20px;
+                            border-radius: 8px;
+                            text-align: center;
+                            z-index: 10000;
+                        `;
+                        errorDiv.innerHTML = `
+                            <h3>❌ 初始化失败</h3>
+                            <p>缺少必需模块: ${missingModules.join(', ')}</p>
+                            <p>请检查控制台错误信息</p>
+                        `;
+                        document.body.appendChild(errorDiv);
+                        return;
+                    }
+                    
+                    // 初始化各个模块
+                    try {
+                        // 1. 初始化图表核心
+                        if (window.ChartCore && window.ChartCore.init) {
+                            window.ChartCore.init();
+                        }
+                        
+                        // 2. 初始化事件管理器
+                        if (window.EventManager && window.EventManager.init) {
+                            window.EventManager.init();
+                        }
+                        
+                        // 3. 初始化状态管理器
+                        if (window.StateManager && window.StateManager.init) {
+                            window.StateManager.init();
+                        }
+                        
+                        // 4. 初始化UI组件
+                        setTimeout(() => {
+                            if (window.TabManager && window.TabManager.init) {
+                                window.TabManager.init();
+                            }
+                            
+                            if (window.IndicatorPanel && window.IndicatorPanel.init) {
+                                window.IndicatorPanel.init();
+                            }
+                        }, 300);
+                        
+                        // 5. 初始化主题
+                        if (window.ThemeManager && window.ThemeManager.init) {
+                            window.ThemeManager.init();
+                        }
+                        
+                        console.log('✅ 图表应用初始化完成');
+                        
+                        // 发送就绪信号到Python
+                        if (window.pythonBridge && window.pythonBridge.notify) {
+                            window.pythonBridge.notify('app_ready', {
+                                timestamp: new Date().toISOString(),
+                                version: '2.0.0'
+                            });
+                        }
+                        
+                    } catch (error) {
+                        console.error('❌ 应用初始化失败:', error);
+                    }
+                }
+                
+                // 开始加载
+                loadAll();
+            })();
+        
+        function initializeChart() {
+            // 初始化图表核心
+            if (window.ChartCore && window.ChartCore.init) {
+                window.ChartCore.init();
+            }
+            
+            // 初始化指标面板
+            setTimeout(() => {
+                if (window.IndicatorPanel && window.IndicatorPanel.init) {
+                    window.IndicatorPanel.init();
+                }
+            }, 1000);
+        }
+    </script>
+</body>
+</html>

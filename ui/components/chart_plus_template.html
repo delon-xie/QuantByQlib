@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradingView Plus Chart</title>
+    <link rel="stylesheet" href="chart_plus_template.css">
+</head>
+<body>
+    <div class="container">
+        <div class="chart-area">
+            <div class="main-chart">
+                <div id="mainChart" class="chart-container"></div>
+                <div id="mainLoading" class="loading">Loading main chart...</div>
+            </div>
+            <!-- 在副图区域添加subLoading元素 -->
+            <div class="sub-chart">
+                <div id="subChart" class="chart-container"></div>
+                <!-- 添加这个元素 -->
+                <div id="subLoading" class="loading">Loading sub chart...</div>
+            </div>
+        </div>
+        
+        <!-- 右侧指标面板 -->
+        <div class="indicator-panel" id="indicatorPanel">
+
+        </div>
+    </div>
+
+<!-- 修改加载顺序 -->
+<script>
+    // 先加载库
+    (function loadScripts() {
+        const scripts = [
+            'lightweight-charts5.2.0/dist/lightweight-charts.standalone.production.js',
+            'lightweight-charts5.2.0/dist/oakscriptjs.umd.js',
+            'lightweight-charts5.2.0/dist/lightweight-charts-indicators.umd.js',
+            'chart_plus_template_tool.js',
+            'chart_plus_template.js',
+            'chart_plus_template_menu.js'
+        ];
+        
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+        
+        // 顺序加载
+        async function loadAll() {
+            for (const src of scripts) {
+                try {
+                    await loadScript(src);
+                    console.log(`✅ 加载成功: ${src}`);
+                } catch (e) {
+                    console.error(`❌ 加载失败: ${src}`, e);
+                }
+            }
+        }
+        
+        loadAll();
+    })();
+
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('📄 DOM 加载完成');
+        
+        // 延迟初始化，确保所有脚本已加载
+        setTimeout(() => {
+            if (window.initializeChartApp) {
+                window.initializeChartApp();
+            }
+        }, 1000);
+    });
+</script>
+</body>
+</html>

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TradingView Advance Widget</title>
+  <link rel="stylesheet" href="css/chart.css">
+  <link rel="stylesheet" href="css/panel.css">
+<style>
+:root { --bg-main: #131722; --bg-panel: #1e222d; --text-primary: #d1d4dc; --text-secondary: #787b86; }
+#timeframe-bar {
+  position: absolute;
+  top: 8px;
+  left: 60px;
+  z-index: 10;
+  display: flex;
+  gap: 2px;
+  background: #1e222d;
+  border-radius: 4px;
+  padding: 2px;
+}
+.tf-btn {
+  background: transparent;
+  border: none;
+  color: #787b86;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.4;
+}
+.tf-btn.active {
+  background: #2a2e39;
+  color: #d1d4dc;
+}
+.tf-btn:hover:not(.active) {
+  color: #b0b5be;
+}
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="chart-area">
+      <div class="main-chart">
+        <div id="timeframe-bar">
+          <button class="tf-btn active" data-tf="D">日线</button>
+          <button class="tf-btn" data-tf="W">周线</button>
+          <button class="tf-btn" data-tf="M">月线</button>
+          <!-- theme toggle temporarily hidden -->
+        </div>
+        <div id="mainChart" class="chart-container"></div>
+      </div>
+      <div class="sub-charts" id="subCharts"></div>
+    </div>
+    <div class="indicator-panel" id="indicatorPanel"></div>
+  </div>
+
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+
+  <!-- Cache busting: version timestamp -->
+  <meta name="hermes-version" content="v4-20250526">
+
+  <script>
+    console.log('========== HTML LOADED ==========');
+    console.log('Document readyState:', document.readyState);
+    
+    (function loadScripts() {
+      var TS = '?v=' + Date.now();  // 缓存破坏
+      var scripts = [
+        'lightweight-charts5.2.0/dist/lightweight-charts.standalone.production.js',
+        'lightweight-charts5.2.0/dist/oakscriptjs.umd.js',
+        'lightweight-charts5.2.0/dist/lightweight-charts-indicators.umd.js',
+      ];
+      function load(src) {
+        return new Promise(function(resolve, reject) {
+          var s = document.createElement('script');
+          s.src = src; 
+          s.onload = function() { console.log('[LOAD] Loaded:', src); resolve(); }; 
+          s.onerror = function(e) { console.error('[LOAD] Failed:', src, e); reject(e); };
+          document.head.appendChild(s);
+        });
+      }
+      async function loadAll() {
+        console.log('[LOADER] Starting script loading...');
+        for (var i = 0; i < scripts.length; i++) {
+          try {
+            console.log('[LOADER] Loading:', scripts[i]);
+            await load(scripts[i]);
+            console.log('[LOADER] Loaded:', scripts[i]);
+          } catch (e) {
+            console.error('[LOADER] Failed to load:', scripts[i], e.message);
+          }
+        }
+        console.log('[LOADER] All scripts loaded');
+        console.log('[LOADER] window.LightweightCharts:', typeof window.LightweightCharts);
+        console.log('[LOADER] window.lightweightCharts:', typeof window.lightweightCharts);
+        console.log('[LOADER] Calling initApp()');
+        initApp();
+      }
+      loadAll();
+    })();
+
+    function initApp() {
+      console.log('[INIT] Starting initApp...');
+      try {
+        var cm = window.chartManager;
+        var ie = window.indicatorEngine;
+        var bc = window.bridgeClient;
+
+        console.log('[INIT] chartManager:', !!cm);
+        console.log('[INIT] indicatorEngine:', !!ie);
+        console.log('[INIT] bridgeClient:', !!bc);
+
+        if (!cm) { 
+          console.error('[INIT] chartManager not loaded'); 
+          setTimeout(initApp, 100);
+          return; 
+        }
+        if (!ie) { 
+          console.error('[INIT] indicatorEngine not loaded'); 
+          setTimeout(initApp, 100);
+          return; 
+        }
+        if (!bc) { 
+          console.error('[INIT] bridgeClient not loaded'); 
+          setTimeout(initApp, 100);
+          return; 
+        }
+
+        var mainContainer = document.getElementById('mainChart');
+        var subContainer = document.getElementById('subCharts');
+        
+        console.log('[INIT] mainContainer:', !!mainContainer);
+        console.log('[INIT] subContainer:', !!subContainer);
+        
+        if (!mainContainer) {
+          console.error('[INIT] mainChart container not found');
+          setTimeout(initApp, 100);
+          return;
+        }
+
+        cm.init(mainContainer, subContainer);
+
+        var panelContainer = document.getElementById('indicatorPanel');
+        window.indicatorPanel = new IndicatorPanel(panelContainer);
+
+        window.drawingTools = new DrawingTools(cm);
+
+        ie.init();
+
+        bc.connect();
+
+        window.isChartInitialized = true;
+        console.log('=== Hermes Engine v4 (elements-architecture) ===');
+        console.log('[INIT] ChartManager:', !!window.chartManager);
+        console.log('IndicatorEngine:', !!window.indicatorEngine);
+        console.log('Panel:', !!window.indicatorPanel);
+        console.log('DrawingTools:', !!window.drawingTools);
+        console.log('CombinedPresets:', !!window.combinedPresets);
+        console.log('StateManager:', !!window.jsStateManager);
+
+        // 时间周期切换按钮绑定
+        var tfBar = document.getElementById('timeframe-bar');
+        if (tfBar) {
+          tfBar.addEventListener('click', function(e) {
+            var btn = e.target.closest('.tf-btn');
+            if (!btn) return;
+            var tf = btn.getAttribute('data-tf');
+            if (tf && window.timeframeController) {
+              window.timeframeController.setTimeframe(tf);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('initApp failed:', e);
+      }
+
+      // 主题切换
+      var themeBtn = document.getElementById('themeToggle');
+      if (themeBtn) {
+        themeBtn.addEventListener('click', function() {
+          var isLight = document.body.classList.toggle('light');
+          themeBtn.textContent = isLight ? '🌙' : '☀️';
+          // 通知 chart-manager 更新配色
+          if (window.chartManager && window.chartManager.mainChart) {
+            var bg = isLight ? '#ffffff' : '#131722';
+            var txt = isLight ? '#191919' : '#d1d4dc';
+            var grid = isLight ? '#f0f0f0' : '#2a2e39';
+            window.chartManager.mainChart.applyOptions({
+              layout: { background: { type: 'solid', color: bg }, textColor: txt },
+              grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+            });
+          }
+        });
+      }
+
+      // ==================== 快捷键 ====================
+      document.addEventListener('keydown', function(ev) {
+        if (ev.ctrlKey || ev.metaKey) {
+          switch (ev.key) {
+            case '1': case '2': case '3': case '4':
+              ev.preventDefault();
+              if (window.indicatorPanel) window.indicatorPanel.switchTab(parseInt(ev.key) - 1);
+              break;
+            case 'f': case 'F':
+              ev.preventDefault();
+              var inp = document.querySelector('.section-search-input');
+              if (inp) { inp.focus(); inp.select(); }
+              break;
+            case 'd': case 'D':
+              ev.preventDefault();
+              if (window.timeframeController) window.timeframeController.setTimeframe('D');
+              break;
+            case 'w': case 'W':
+              ev.preventDefault();
+              if (window.timeframeController) window.timeframeController.setTimeframe('W');
+              break;
+            case 'm': case 'M':
+              ev.preventDefault();
+              if (window.timeframeController) window.timeframeController.setTimeframe('M');
+              break;
+          }
+          if (ev.key === 'R' && ev.shiftKey) {
+            ev.preventDefault();
+            if (window.chartManager && window.indicatorEngine) {
+              if (window.timeframeController) window.timeframeController.setTimeframe('D');
+              window.indicatorEngine._activeMap.clear();
+              window.indicatorEngine._visibleMap.clear();
+              window.chartManager.clearAll();
+              if (window.indicatorPanel) window.indicatorPanel.refresh();
+            }
+          }
+        }
+        if (ev.key === 'Escape') {
+          var op = document.querySelector('.params-panel.open');
+          if (op) op.classList.remove('open');
+        }
+      });
+    }
+  </script>
+
+  <script src="js/bridge-client.js?v=4"></script>
+  <script src="js/primitives.js?v=4"></script>
+  <script src="js/chart-manager.js?v=4"></script>
+  <script src="js/timeframe-controller.js?v=4"></script>
+  <script src="js/indicator-engine.js?v=4"></script>
+  <script src="js/indicator-catalog.js?v=4"></script>
+  <script src="js/indicator-renderer.js?v=4"></script>
+  <script src="js/indicator-calculator.js?v=4"></script>
+  <script src="js/indicator-lifecycle.js?v=4"></script>
+  <script src="js/i18n.js?v=4"></script>
+  <script src="js/indicator-panel.js?v=4"></script>
+  <script src="js/drawing-tools.js?v=4"></script>
+  <script src="js/combined-presets.js?v=4"></script>
+  <script src="js/favorites.js?v=4"></script>
+  <script src="js/js-state-manager.js?v=4"></script>
+</body>
+</html>

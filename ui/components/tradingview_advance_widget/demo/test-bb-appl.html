@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>BB AAPL Test</title>
+<style>body{margin:0}#chart{width:100vw;height:100vh}</style></head><body>
+<div id="chart"></div>
+<script src="../html/lightweight-charts5.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script src="../html/lightweight-charts5.2.0/dist/oakscriptjs.umd.js"></script>
+<script src="../html/lightweight-charts5.2.0/dist/lightweight-charts-indicators.umd.js"></script>
+<script src="../html/js/primitives.js"></script>
+<script>
+var LC = window.LightweightCharts;
+var lci = window.LightweightChartsIndicators;
+
+// Generate AAPL-like data (246-308 range, 120 bars)
+var bars = [];
+var price = 275;
+for (var i = 0; i < 120; i++) {
+  var dt = new Date(2025, 10, 24 + i);
+  var o = price + (Math.random() - 0.5) * 4;
+  var c = o + (Math.random() - 0.5) * 6;
+  var h = Math.max(o, c) + Math.random() * 3;
+  var l = Math.min(o, c) - Math.random() * 3;
+  bars.push({ time: Math.floor(dt.getTime() / 1000), open: o, high: h, low: l, close: c, volume: 1000000 });
+  price = c;
+  if (i > 60) price += 0.3; // uptrend in second half
+}
+
+// Create chart
+var chart = LC.createChart(document.getElementById('chart'), {
+  height: 600, layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
+  grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
+  crosshair: { mode: LC.CrosshairMode.Normal },
+  timeScale: { timeVisible: true, borderColor: '#2a2e39' },
+  rightPriceScale: { borderColor: '#2a2e39', autoScale: true },
+});
+
+// Add candles
+var candleSeries = chart.addSeries(LC.CandlestickSeries, {
+  upColor: '#26a69a', downColor: '#ef5350', borderUpColor: '#26a69a',
+  borderDownColor: '#ef5350', wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+});
+candleSeries.setData(bars);
+
+// Find BollingerBands
+var bbFn = null;
+for (var k in lci) {
+  if (lci[k] && lci[k].calculate && lci[k].metadata && lci[k].metadata.title === 'Bollinger Bands') {
+    bbFn = lci[k]; break;
+  }
+}
+
+if (bbFn) {
+  console.log('=== BollingerBands ===');
+  var result = bbFn.calculate(bars, { length: 20, src: 'close', mult: 2 });
+  var pk = Object.keys(result.plots);
+  console.log('Plots:', pk);
+  
+  // Add each plot as overlay on main chart
+  pk.forEach(function(plotKey) {
+    var pd = result.plots[plotKey];
+    var valid = pd.filter(function(d) { return d && d.value != null && isFinite(d.value); });
+    if (valid.length === 0) return;
+    
+    var min = Math.min.apply(null, valid.map(function(d){return d.value;}));
+    var max = Math.max.apply(null, valid.map(function(d){return d.value;}));
+    console.log(plotKey + ': min=' + min.toFixed(2) + ' max=' + max.toFixed(2) + ' count=' + valid.length);
+    
+    var colors = { plot0: '#2962FF', plot1: '#F23645', plot2: '#089981' };
+    var series = chart.addSeries(LC.LineSeries, {
+      color: colors[plotKey] || '#2962FF',
+      lineWidth: 1, lastValueVisible: true,
+      priceFormat: { type: 'custom', minMove: 0.01, formatter: function(v) { return v.toFixed(2); } },
+      // Use autoscaleInfoProvider to make this overlay contribute to price scale
+      autoscaleInfoProvider: function() { return null; }, // null = use default (contribute to scale)
+    });
+    series.setData(pd);
+  });
+  
+  // After adding all plots, get the current price scale range
+  var priceScale = chart.priceScale('right');
+  console.log('=== Price Scale State ===');
+  console.log('Mode:', priceScale.mode ? priceScale.mode() : 'N/A');
+  
+  // Check what autoScale actually does
+  chart.timeScale().fitContent();
+  
+  // Also add fills
+  if (result.fills) {
+    // Fills require primitives - skip for this test
+    console.log('Fills config:', JSON.stringify(result.fills));
+  }
+}
+
+// Find ATR too
+for (var k in lci) {
+  if (lci[k] && lci[k].calculate && lci[k].metadata && lci[k].metadata.title === 'Average True Range') {
+    var atrFn = lci[k];
+    console.log('\n=== ATR ===');
+    var atrResult = atrFn.calculate(bars, { length: 14 });
+    var atrPlot = atrResult.plots[Object.keys(atrResult.plots)[0]];
+    var valid = atrPlot.filter(function(d) { return d && d.value != null && isFinite(d.value); });
+    console.log('ATR min:', Math.min.apply(null, valid.map(function(d){return d.value;})).toFixed(2));
+    console.log('ATR max:', Math.max.apply(null, valid.map(function(d){return d.value;})).toFixed(2));
+    break;
+  }
+}
+
+console.log('Data range: open=' + bars[0].open.toFixed(2) + ' close=' + bars[bars.length-1].close.toFixed(2));
+console.log('Candle high max:', Math.max.apply(null, bars.map(function(b){return b.high;})).toFixed(2));
+console.log('Candle low min:', Math.min.apply(null, bars.map(function(b){return b.low;})).toFixed(2));
+
+// Now test in a subchart - create a second chart below
+var subContainer = document.createElement('div');
+subContainer.style.height = '200px';
+document.body.appendChild(subContainer);
+var subChart = LC.createChart(subContainer, {
+  height: 200, layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
+  grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
+  timeScale: { visible: false },
+  rightPriceScale: { autoScale: true },
+});
+
+if (bbFn) {
+  var subResult = bbFn.calculate(bars, { length: 20, src: 'close', mult: 2 });
+  Object.keys(subResult.plots).forEach(function(pk) {
+    var pd = subResult.plots[pk];
+    var colors = { plot0: '#2962FF', plot1: '#F23645', plot2: '#089981' };
+    var s = subChart.addSeries(LC.LineSeries, {
+      color: colors[pk] || '#2962FF', lineWidth: 1,
+      lastValueVisible: true, priceFormat: { type: 'custom', minMove: 0.01, formatter: function(v) { return v.toFixed(2); } },
+    });
+    s.setData(pd);
+  });
+  subChart.timeScale().fitContent();
+}
+</script></body></html>

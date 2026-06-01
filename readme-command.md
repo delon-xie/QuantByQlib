@@ -1,24 +1,33 @@
 ``` bash
 # 构建虚拟环境 3.10.20
-~/.pyenv/versions/3.10.20/bin/python -m venv .venv
+# ~/.pyenv/versions/3.10.20/bin/python -m venv .venv
 # 激活虚拟环境
-source .venv/bin/activate
+# source .venv/bin/activate
+
+# Torch 环境2.6.0 特殊需求
+conda deactivate
+conda activate .venv
+
 # 验证版本
-python --version
+python --V
+
+# 2. 先装 PyTorch（conda 渠道，Intel Mac 唯一途径）
+conda install "pytorch>=2.6.0" "torchvision" "torchaudio" "numpy>=2.4.6" -c pytorch -c conda-forge
+
 
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r requirements_base.txt
 
 # 运行 QuantByQLib
 python main.py 
 
 # 安装依赖
 # 基本安装
-pip install -r requirements.txt
+pip install -r requirements_base.txt
 
 # 如果需要升级 pip
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r requirements_base.txt
 
 # 创建镜像
 chmod +x scripts/build_docker_deepseek.sh

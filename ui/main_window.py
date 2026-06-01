@@ -25,6 +25,7 @@ from ui.pages.factor_page     import FactorPage
 from ui.pages.config_page     import ConfigPage
 from ui.pages.logs_page       import LogsPage
 from ui.pages.poolconfig_page import PoolConfigPage
+from ui.pages.chart_page import ChartPage
 from ui.theme import COLORS
 from ui.components.market_combo import MarketComboBox
 from utils.logger import logger
@@ -86,6 +87,7 @@ class MainWindow(QMainWindow):
         # 左侧：侧边栏
         self._sidebar = Sidebar()
         self._sidebar.page_changed.connect(self._on_page_changed)
+        self._sidebar.width_changed.connect(self._on_sidebar_resized)
         root_layout.addWidget(self._sidebar)
 
         # 右侧：页面容器
@@ -106,6 +108,7 @@ class MainWindow(QMainWindow):
             "config":    ConfigPage,
             "logs":      LogsPage,
             "universe":  PoolConfigPage,
+            "chart":     ChartPage,
         }
         for key, PageClass in page_classes.items():
             page = PageClass()
@@ -181,6 +184,13 @@ class MainWindow(QMainWindow):
     def _on_page_changed(self, page_key: str) -> None:
         if page_key in self._scrolls:
             self._stack.setCurrentWidget(self._scrolls[page_key])
+
+    def _on_sidebar_resized(self, width: int) -> None:
+        """侧边栏宽度变化时触发内容区域更新"""
+        self.centralWidget().adjustSize()
+        self._stack.adjustSize()
+        self._stack.updateGeometry()
+        self.update()
 
     def _on_navigate_to(self, page_key: str) -> None:
         """事件总线触发的页面跳转（带侧边栏同步）"""

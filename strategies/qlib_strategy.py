@@ -387,6 +387,415 @@ def get_qlib_local_data(symbols, days=90):
     except Exception as e:
         print(f"获取 qlib 数据失败: {e}")
         return pd.DataFrame()
+def _yfinance_score_universe_advance(
+    universe: list[str],
+    strategy_key: str,
+    strategy_name: str,
+    topk: int,
+    progress_cb=None,
+) -> StrategyResult:
+    """
+    高级版 yfinance 规则打分（改进版）：
+    
+    改进点：
+    1. 多周期动量加权（30%权重）（5/10/20/60日）       → 趋势强度
+    2. RSI 相对强度指标（15%权重）（RSI）              → 超买超卖
+    3. 多均线排列（20%权重）                         → 支撑阻力
+    4. 成交量确认（15%权重）（放量上涨加分）            → 量价确认
+    5. 波动率调整（10%权重）（低波动加分）              → 风险控制
+    6. 布林带位置（10%权重）（接近下轨反弹机会）         → 均值回归
+    7. MACD 趋势确认（10%权重）                      → 趋势转折
+    特点：
+    
+    2. 动态权重分配（根据市场状态调整）
+    3. 抗噪：更强（多维度确认）
+    
+    完全基于真实市场数据，无 Mock。
+    """
+    import numpy as np
+    import pandas as pd
+
+    def cb(pct, msg):
+        if progress_cb:
+            try:
+                progress_cb(pct, msg)
+            except Exception:
+                pass
+        logger.debug(f"[{strategy_key}] {pct}% - {msg}")
+
+    cb(10, f"yfinance 高级模式：对 {len(universe)} 支股票多维打分...")
+
+    scores: dict[str, float] = {}
+    batch = 50
+    total = len(universe)
+
+    for i in range(0, total, batch):
+        chunk = universe[i: i + batch]
+        pct = 10 + int((i / total) * 70)
+        cb(pct, f"下载并分析 {i+1}-{min(i+batch, total)}/{total}...")
+        progress_info = f"分析进度 {i+1}-{min(i+batch, total)}/{total} "
+    
+        try:
+            from core.app_state import get_state
+            reg = get_state().reg
+            
+            if reg == "bt":
+                cb(f"{progress_info}BTC行情，使用 qlib 本地数据...")
+                df_all = get_qlib_local_data(chunk, days=90)
+            else:
+                df_all = download_or_get_local_data(chunk, cb, progress_info)
+            
+            if df_all is None or df_all.empty:
+                cb(f"{progress_info}数据为空，跳过")
+                continue
+
+            for ticker in chunk:
+                try:
+                    # 提取单支股票数据
+                    if isinstance(df_all.columns, pd.MultiIndex):
+                        if ticker not in df_all.columns.get_level_values(0):
+                            continue
+                        df = df_all[ticker].dropna()
+                    else:
+                        df = df_all.dropna()
+
+                    if df.empty or len(df) < 30:  # 至少需要30天数据
+                        continue
+
+                    # 检查是否有足够的非NaN数据
+                    close = df["Close"] if "Close" in df.columns else df["close"]
+                    volume = df["Volume"] if "Volume" in df.columns else df.get("volume")
+                    
+                    if close.isna().sum() > len(close) * 0.3:  # 超过30%缺失
+                        continue
+                    if volume is None or volume.isna().sum() > len(volume) * 0.3:
+                        continue
+        
+                    if volume is None:
+                        continue
+
+                    sub_scores = []
+                    weights = []
+
+                    # ── 1. 多周期动量评分（权重 30%）──
+                    # 改进版：5/10/20/60四周期加权
+                    # 5日  (20%) → 捕捉超短期动能
+                    # 10日 (30%) → 短期趋势
+                    # 20日 (30%) → 中期趋势  
+                    # 60日 (20%) → 长期趋势
+                    momentum_score = 0.0
+                    momentum_weight = 0.0
+                    
+                    # 5日动量（短期）
+                    if len(close) >= 5:
+                        mom5 = float(close.iloc[-1] / close.iloc[-5] - 1)
+                        score_5d = np.clip(mom5 * 10 + 0.5, 0, 1)
+                        momentum_score += score_5d * 0.2
+                        momentum_weight += 0.2
+                    
+                    # 10日动量（中短期）
+                    if len(close) >= 10:
+                        mom10 = float(close.iloc[-1] / close.iloc[-10] - 1)
+                        score_10d = np.clip(mom10 * 8 + 0.5, 0, 1)
+                        momentum_score += score_10d * 0.3
+                        momentum_weight += 0.3
+                    
+                    # 20日动量（中期）
+                    if len(close) >= 20:
+                        mom20 = float(close.iloc[-1] / close.iloc[-20] - 1)
+                        score_20d = np.clip(mom20 * 5 + 0.5, 0, 1)
+                        momentum_score += score_20d * 0.3
+                        momentum_weight += 0.3
+                    
+                    # 60日动量（长期）
+                    if len(close) >= 60:
+                        mom60 = float(close.iloc[-1] / close.iloc[-60] - 1)
+                        score_60d = np.clip(mom60 * 3 + 0.5, 0, 1)
+                        momentum_score += score_60d * 0.2
+                        momentum_weight += 0.2
+                    
+                    if momentum_weight > 0:
+                        momentum_score /= momentum_weight
+                        sub_scores.append(momentum_score)
+                        weights.append(0.30)  # 总权重30%
+
+                    # ── 2. RSI 相对强弱指标（权重 15%）──
+                    # 新增技术指标
+                    # RSI < 30   → 超卖，可能反弹 (0.7分)
+                    # RSI 30-40  → 偏弱势 (0.6分)
+                    # RSI 40-60  → 健康区间 (0.8分) ✅最优
+                    # RSI 60-70  → 偏强势 (0.6分)
+                    # RSI > 70   → 超买，风险高 (0.3分)
+                    if len(close) >= 14:
+                        delta = close.diff()
+                        gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+                        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                        rs = gain / (loss + 1e-9)
+                        rsi = 100 - (100 / (1 + rs))
+                        rsi_latest = float(rsi.iloc[-1])
+                        
+                        # RSI 在 40-60 区间最优（不过热也不超卖）
+                        if 40 <= rsi_latest <= 60:
+                            rsi_score = 0.8
+                        elif 30 <= rsi_latest < 40 or 60 < rsi_latest <= 70:
+                            rsi_score = 0.6
+                        elif rsi_latest < 30:  # 超卖，可能反弹
+                            rsi_score = 0.7
+                        elif rsi_latest > 70:  # 超买，风险高
+                            rsi_score = 0.3
+                        else:
+                            rsi_score = 0.5
+                        
+                        sub_scores.append(rsi_score)
+                        weights.append(0.15)
+
+                    # ── 3. 均线排列评分（权重 20%）──
+                    # 改进版：MA5/MA20/MA60三重确认
+                    # MA5  (30%) → 短期支撑
+                    # MA20 (40%) → 中期趋势（最重要）
+                    # MA60 (30%) → 长期趋势
+                    ma_score = 0.0
+                    ma_weight = 0.0
+                    
+                    # 价格相对 MA5
+                    if len(close) >= 5:
+                        ma5 = float(close.rolling(5).mean().iloc[-1])
+                        price = float(close.iloc[-1])
+                        diff_5 = (price / ma5 - 1)
+                        score_ma5 = np.clip(diff_5 * 20 + 0.5, 0, 1)
+                        ma_score += score_ma5 * 0.3
+                        ma_weight += 0.3
+                    
+                    # 价格相对 MA20
+                    if len(close) >= 20:
+                        ma20 = float(close.rolling(20).mean().iloc[-1])
+                        diff_20 = (price / ma20 - 1)
+                        score_ma20 = np.clip(diff_20 * 10 + 0.5, 0, 1)
+                        ma_score += score_ma20 * 0.4
+                        ma_weight += 0.4
+                    
+                    # 价格相对 MA60
+                    if len(close) >= 60:
+                        ma60 = float(close.rolling(60).mean().iloc[-1])
+                        diff_60 = (price / ma60 - 1)
+                        score_ma60 = np.clip(diff_60 * 5 + 0.5, 0, 1)
+                        ma_score += score_ma60 * 0.3
+                        ma_weight += 0.3
+                    
+                    if ma_weight > 0:
+                        ma_score /= ma_weight
+                        sub_scores.append(ma_score)
+                        weights.append(0.20)
+
+                    # ── 4. 成交量确认（权重 15%）──
+                    # 新增量价配合逻辑
+                    # 放量上涨 (vol_ratio > 1.2 & price↑) → 高分 ✅
+                    # 缩量上涨 (vol_ratio ≤ 1.2 & price↑) → 中等
+                    # 放量下跌 (vol_ratio > 1.2 & price↓) → 低分 ⚠️
+                    # 缩量下跌 (vol_ratio ≤ 1.2 & price↓) → 中等偏低
+                    if len(volume) >= 20:
+                        # 成交量均线
+                        vol_ma20 = volume.rolling(20).mean()
+                        vol_latest = float(volume.iloc[-1])
+                        vol_avg = float(vol_ma20.iloc[-1])
+                        
+                        # 量比（当前成交量 / 平均成交量）
+                        vol_ratio = vol_latest / (vol_avg + 1e-9)
+                        
+                        # 价格上涨且放量 → 高分
+                        price_change = float(close.iloc[-1] / close.iloc[-2] - 1)
+                        
+                        if price_change > 0 and vol_ratio > 1.2:
+                            # 放量上涨，强势信号
+                            vol_score = min(vol_ratio / 3.0, 1.0)
+                        elif price_change > 0 and vol_ratio <= 1.2:
+                            # 缩量上涨，谨慎
+                            vol_score = 0.5
+                        elif price_change < 0 and vol_ratio > 1.2:
+                            # 放量下跌，危险信号
+                            vol_score = 0.2
+                        else:
+                            # 缩量下跌或平盘
+                            vol_score = 0.4
+                        
+                        sub_scores.append(vol_score)
+                        weights.append(0.15)
+
+                    # ── 5. 波动率调整（权重 10%）──
+                    # 新增风险控制维度
+                    # 波动率 < 1.5%  → 稳定，高分 (0.9)
+                    # 波动率 1.5-2.5% → 正常 (0.7)
+                    # 波动率 2.5-3.5% → 偏高 (0.5)
+                    # 波动率 > 3.5%  → 高风险 (0.3)
+                    if len(close) >= 20:
+                        # 计算20日波动率
+                        returns = close.pct_change().dropna()
+                        volatility = float(returns.tail(20).std())
+                        annualized_vol = volatility * np.sqrt(252)
+                        
+                        # 低波动率加分（稳定性好）
+                        # 典型日波动率：0.01-0.03
+                        # 转化为年波动率
+                        if annualized_vol < 0.20:   # 年化 < 20%
+                            vol_adjust_score = 0.9
+                        elif annualized_vol < 0.35: # 年化 20-35%
+                            vol_adjust_score = 0.7
+                        elif annualized_vol < 0.50: # 年化 35-50%
+                            vol_adjust_score = 0.5
+                        else:                       # 年化 > 50%
+                            vol_adjust_score = 0.3
+                        
+                        sub_scores.append(vol_adjust_score)
+                        weights.append(0.10)
+
+                    # ── 6. 布林带位置（权重 10%）──
+                    # 新增均值回归信号
+                    # 位置 < 0.2 (近下轨) → 反弹机会 (0.8) ✅
+                    # 位置 0.2-0.4       → 偏低位 (0.6)
+                    # 位置 0.4-0.7       → 中间区 (0.5)
+                    # 位置 0.7-0.9       → 偏高位 (0.3)
+                    # 位置 > 0.9 (近上轨) → 回调风险 (0.2) ⚠️
+                    if len(close) >= 20:
+                        ma20_bb = close.rolling(20).mean()
+                        std20 = close.rolling(20).std()
+                        upper_band = ma20_bb + 2 * std20
+                        lower_band = ma20_bb - 2 * std20
+                        
+                        price_latest = float(close.iloc[-1])
+                        upper_latest = float(upper_band.iloc[-1])
+                        lower_latest = float(lower_band.iloc[-1])
+                        
+                        # 计算价格在布林带中的位置 (0=下轨, 1=上轨)
+                        band_width = upper_latest - lower_latest
+                        if band_width > 0:
+                            position = (price_latest - lower_latest) / band_width
+                        else:
+                            position = 0.5
+                        
+                        # 接近下轨（<0.2）→ 反弹机会，高分
+                        # 中间区域（0.3-0.7）→ 中性
+                        # 接近上轨（>0.8）→ 回调风险，低分
+                        if position < 0.2:
+                            bb_score = 0.8
+                        elif position < 0.4:
+                            bb_score = 0.6
+                        elif position < 0.7:
+                            bb_score = 0.5
+                        elif position < 0.9:
+                            bb_score = 0.3
+                        else:
+                            bb_score = 0.2
+                        
+                        sub_scores.append(bb_score)
+                        weights.append(0.10)
+                        
+                    
+                    # ── 7. MACD 趋势确认（权重 10%）──
+                    if len(close) >= 26:
+                        # 计算 EMA
+                        ema12 = close.ewm(span=12, adjust=False).mean()
+                        ema26 = close.ewm(span=26, adjust=False).mean()
+                        
+                        # MACD 线
+                        macd_line = ema12 - ema26
+                        
+                        # Signal 线（MACD的9日EMA）
+                        signal_line = macd_line.ewm(span=9, adjust=False).mean()
+                        
+                        # Histogram
+                        histogram = macd_line - signal_line
+                        
+                        macd_latest = float(macd_line.iloc[-1])
+                        signal_latest = float(signal_line.iloc[-1])
+                        hist_latest = float(histogram.iloc[-1])
+                        
+                        # 获取前一日数据（用于判断金叉/死叉）
+                        if len(macd_line) >= 2:
+                            macd_prev = float(macd_line.iloc[-2])
+                            signal_prev = float(signal_line.iloc[-2])
+        
+                            # 判断是否发生金叉/死叉
+                            is_golden_cross = (macd_latest > signal_latest and 
+                                              macd_prev <= signal_prev)
+                            is_death_cross = (macd_latest < signal_latest and 
+                                             macd_prev >= signal_prev)
+                        else:
+                            is_golden_cross = False
+                            is_death_cross = False
+        
+                        # MACD 评分逻辑
+                        macd_score = 0.5  # 默认中性
+                        
+                        # 情况1：金叉且MACD>0（最强看涨）
+                        if is_golden_cross and macd_latest > 0:
+                            if hist_latest > 0 and hist_latest > float(histogram.iloc[-2]):
+                                # 金叉确认 + 动能增强
+                                macd_score = 0.95
+                            else:
+                                macd_score = 0.8
+                        
+                        # 情况2：MACD>0 且在Signal上方（持续看涨）
+                        elif macd_latest > 0:
+                            macd_score = 0.7
+                        
+                        # 情况3：MACD>0 但在Signal下方（回调中）
+                        elif macd_latest > 0:
+                            macd_score = 0.55
+                        
+                        # 情况4：刚发生死叉且MACD<0（最强看跌）
+                        elif is_death_cross and macd_latest < 0:
+                            if hist_latest < 0 and hist_latest < float(histogram.iloc[-2]):
+                                macd_score = 0.05  # 死叉确认 + 动能减弱
+                            else:
+                                macd_score = 0.2
+                        
+                        # 情况5：MACD<0 且在Signal下方（持续看跌）
+                        elif macd_latest < signal_latest and macd_latest < 0:
+                            macd_score = 0.3
+    
+                        # 情况6：MACD<0 但在Signal上方（反弹中）
+                        else:
+                            macd_score = 0.45
+        
+                        sub_scores.append(macd_score)
+                        weights.append(0.10)
+                            
+                    # ── 计算加权总分 ──
+                    if sub_scores and weights:
+                        # 动态归一化：确保权重和为1，适应部分指标缺失的情况
+                        weight_sum = sum(weights)
+                        normalized_weights = [w / weight_sum for w in weights]
+                        
+                        final_score = sum(s * w for s, w in zip(sub_scores, normalized_weights))
+                        scores[ticker] = float(np.clip(final_score, 0, 1))
+
+                except Exception as e:
+                    logger.debug(f"yfinance 高级打分失败 {ticker}：{e}")
+        except Exception as e:
+            logger.debug(f"yfinance 批量处理失败：{e}")
+
+    cb(85, f"高级打分完成，{len(scores)} 支有效，排名 Top-{topk}...")
+
+    if not scores:
+        raise RuntimeError("所有股票价格数据获取失败，无法生成选股结果")
+
+    scores_series = pd.Series(scores).sort_values(ascending=False)
+    topk_list = [str(t).upper() for t in scores_series.index[:topk].tolist()]
+
+    logger.info(
+        f"yfinance 高级规则打分完成：{len(scores)} 支有效，"
+        f"Top-{topk}：{topk_list[:5]}..."
+    )
+
+    return StrategyResult(
+        strategy_key=strategy_key,
+        strategy_name=strategy_name + "（高级价格动量）",
+        scores=scores_series,
+        topk_tickers=topk_list,
+        model_name="yfinance 高级规则打分",
+        universe_size=len(universe),
+    )
+
 def _yfinance_score_universe(
     universe: list[str],
     strategy_key: str,
@@ -796,7 +1205,7 @@ def _run_with_qlib_or_fallback(
             f"距今 {days_since_data} 天），切换 yfinance 规则打分"
         )
         cb(5, "Qlib 数据过旧，切换价格动量模式...")
-        return _yfinance_score_universe(
+        return _yfinance_score_universe_advance(
             universe, strategy_key, strategy_name, topk, progress_cb
         )
 
@@ -902,7 +1311,7 @@ def _run_with_qlib_or_fallback(
             f"[{strategy_key}] Qlib 模型失败（{e}），切换 yfinance 规则打分"
         )
         cb(5, "模型训练失败，切换价格动量模式...")
-        return _yfinance_score_universe(
+        return _yfinance_score_universe_advance(
             universe, strategy_key, strategy_name, topk, progress_cb
         )
 

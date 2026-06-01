@@ -2,7 +2,7 @@
 # Python 3.10.x
 
 # ── UI 框架 ────────────────────────────────────────────────────
-PyQt6>=6.7.0
+PyQt6>=6.11.0
 pyqtgraph>=0.13.0
 
 # ── Qlib 生态 ──────────────────────────────────────────────────
@@ -59,9 +59,10 @@ anthropic>=0.97.0
 openai>=2.32.0
 tqdm>=4.67.3
 duckdb>=1.5.2
-pytest 
-pytest-cov
+pytest>=9.0.3
+pytest-cov>=7.1.0
 python-binance
-PyQt6-WebEngine 
+PyQt6-WebEngine >=6.11.0
+PyQt6-Charts >=6.11.0
 markdown 
 Pygments

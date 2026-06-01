@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>BB Trace</title></head><body>
+<script src="../html/lightweight-charts5.2.0/dist/oakscriptjs.umd.js"></script>
+<script src="../html/lightweight-charts5.2.0/dist/lightweight-charts-indicators.umd.js"></script>
+<script>
+var lci = window.LightweightChartsIndicators;
+
+// Generate mock price data (200 bars, prices ~50-150)
+var bars = [];
+for (var i = 0; i < 200; i++) {
+  var base = 50 + (i / 200) * 100;
+  var noise = (Math.random() - 0.5) * 10;
+  var close = base + noise;
+  bars.push({
+    time: '2024-01-' + String(i + 1).padStart(2, '0'),
+    open: close - 2, high: close + 5, low: close - 5,
+    close: close, volume: 1000000
+  });
+}
+
+// Find BollingerBands in LCI
+var bbFn = null;
+for (var k in lci) {
+  if (lci[k] && lci[k].calculate && lci[k].metadata && lci[k].metadata.title === 'Bollinger Bands') {
+    bbFn = lci[k]; break;
+  }
+}
+
+if (bbFn) {
+  console.log('=== BOLLINGER BANDS (SMA 20, mult 2) ===');
+  var result = bbFn.calculate(bars, { length: 20, src: 'close', mult: 2 });
+  
+  var p0 = result.plots.plot0; // Basis (SMA)
+  var p1 = result.plots.plot1; // Upper
+  var p2 = result.plots.plot2; // Lower
+  
+  // Get last valid values
+  var valid = p0.filter(function(d) { return d && d.value != null && isFinite(d.value); });
+  console.log('Valid plot0 (Basis) count:', valid.length);
+  if (valid.length > 0) {
+    console.log('Basis - last:', valid[valid.length-1].value);
+    console.log('Basis - min:', Math.min.apply(null, valid.map(function(d){return d.value;})));
+    console.log('Basis - max:', Math.max.apply(null, valid.map(function(d){return d.value;})));
+  }
+  
+  var valid1 = p1.filter(function(d) { return d && d.value != null && isFinite(d.value); });
+  if (valid1.length > 0) {
+    console.log('Upper - last:', valid1[valid1.length-1].value);
+    console.log('Upper - min:', Math.min.apply(null, valid1.map(function(d){return d.value;})));
+    console.log('Upper - max:', Math.max.apply(null, valid1.map(function(d){return d.value;})));
+  }
+  
+  var valid2 = p2.filter(function(d) { return d && d.value != null && isFinite(d.value); });
+  if (valid2.length > 0) {
+    console.log('Lower - last:', valid2[valid2.length-1].value);
+    console.log('Lower - min:', Math.min.apply(null, valid2.map(function(d){return d.value;})));
+    console.log('Lower - max:', Math.max.apply(null, valid2.map(function(d){return d.value;})));
+  }
+  
+  console.log('Fills:', JSON.stringify(result.fills));
+  
+  // Also check: what are the first valid values?
+  for (var i = 0; i < p0.length; i++) {
+    if (p0[i] && p0[i].value != null && isFinite(p0[i].value)) {
+      console.log('First valid Basis at index', i, 'value:', p0[i].value, 'price:', bars[i].close);
+      break;
+    }
+  }
+} else {
+  console.error('BollingerBands not found');
+}
+
+// Also find ATR
+for (var k in lci) {
+  if (lci[k] && lci[k].calculate && lci[k].metadata && lci[k].metadata.title === 'Average True Range') {
+    var atrFn = lci[k];
+    console.log('\n=== ATR (14) ===');
+    var atrResult = atrFn.calculate(bars, { length: 14 });
+    var pk = Object.keys(atrResult.plots);
+    var d = atrResult.plots[pk[0]];
+    var valid = d.filter(function(x) { return x && x.value != null && isFinite(x.value); });
+    console.log('Valid count:', valid.length);
+    if (valid.length > 0) {
+      console.log('Last:', valid[valid.length-1].value);
+      console.log('Min:', Math.min.apply(null, valid.map(function(x){return x.value;})));
+      console.log('Max:', Math.max.apply(null, valid.map(function(x){return x.value;})));
+    }
+    break;
+  }
+}
+</script></body></html>

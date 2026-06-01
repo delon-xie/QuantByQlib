@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>TradingView Chart</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #131722; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #d1d4dc; overflow: hidden; }
+        #chart-container { position: relative; width: 100vw; height: 100vh; display: flex; flex-direction: row; }
+        
+        /* 左侧图表区域 */
+        #charts-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        
+        /* 顶部数值面板 */
+        #legend-panel {
+            position: absolute; top: 10px; left: 10px; z-index: 20;
+            background: rgba(19, 23, 34, 0.8); padding: 8px; border-radius: 4px;
+            font-size: 12px; display: flex; gap: 15px; pointer-events: none;
+        }
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .legend-label { color: #787b86; }
+        .up { color: #0ecb81; } .down { color: #f6465d; }
+
+        /* 主图区域 */
+        #main-chart { flex: 7; width: 100%; min-height: 0; border-bottom: 1px solid #2a2e39; }
+
+        /* 副图区域 */
+        #sub-chart { flex: 3; width: 100%; min-height: 0; }
+
+        /* 【新增】右侧指标面板 */
+        #indicator-panel {
+            width: 280px; flex-shrink: 0;
+            background: #1e222d; border-left: 1px solid #2a2e39;
+            display: flex; flex-direction: column; z-index: 30;
+        }
+        
+        #panel-header {
+            padding: 12px; border-bottom: 1px solid #2a2e39;
+            font-size: 14px; font-weight: bold; color: #d1d4dc;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        
+        #panel-content {
+            flex: 1; overflow-y: auto; padding: 8px;
+        }
+        
+        /* 分类折叠菜单 */
+        .category {
+            margin-bottom: 8px;
+            border: 1px solid #2a2e39;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .category-header {
+            padding: 8px 12px;
+            background: #2a2e39;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .category-header:hover {
+            background: #363a45;
+        }
+        
+        .category-header .arrow {
+            transition: transform 0.2s;
+        }
+        
+        .category-header.collapsed .arrow {
+            transform: rotate(-90deg);
+        }
+        
+        .category-items {
+            display: block;
+            max-height: 500px;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .category-items.collapsed {
+            max-height: 0;
+        }
+        
+        .indicator-item {
+            padding: 6px 12px 6px 24px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .indicator-item:hover {
+            background: #2a2e39;
+        }
+        
+        .indicator-item.active {
+            background: #2962ff;
+            color: #fff;
+        }
+        
+        .indicator-item .en-name {
+            color: #787b86;
+            font-size: 11px;
+        }
+        
+        .indicator-item.active .en-name {
+            color: rgba(255,255,255,0.7);
+        }
+
+        /* 底部指标切换栏 */
+        #indicator-bar {
+            height: 40px; flex-shrink: 0;
+            background: #1e222d; border-top: 1px solid #2a2e39;
+            display: flex; align-items: center; padding: 0 10px; gap: 10px; z-index: 20;
+            overflow-x: auto;
+        }
+        .ind-btn {
+            background: transparent; border: 1px solid #434651; color: #b2b5be;
+            padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
+            transition: all 0.2s; white-space: nowrap;
+        }
+        .ind-btn:hover { background: #2a2e39; color: #fff; }
+        .ind-btn.active { background: #2962ff; border-color: #2962ff; color: #fff; }
+    </style>
+</head>
+<body>
+    <div id="chart-container">
+        <!-- 左侧图表区域 -->
+        <div id="charts-area">
+            <div id="legend-panel">
+                <div class="legend-item"><span class="legend-label">OHLC:</span> <span id="ohlc-val">--</span></div>
+                <div class="legend-item" id="ind-vals"></div>
+            </div>
+            
+            <div id="main-chart"></div>
+            <div id="sub-chart"></div>
+            
+            <div id="indicator-bar">
+                <button class="ind-btn active" onclick="toggleGroup('MA')">MA</button>
+                <button class="ind-btn" onclick="toggleGroup('EMA')">EMA</button>
+                <button class="ind-btn" onclick="toggleGroup('BOLL')">BOLL</button>
+                <button class="ind-btn" onclick="toggleGroup('TREND')">TREND</button>
+                <button class="ind-btn" onclick="toggleGroup('VOLATILITY')">VOLATILITY</button>
+                <button class="ind-btn" onclick="toggleGroup('PROFILE')">PROFILE</button>
+                <button class="ind-btn" onclick="toggleGroup('VOL')">VOL</button>
+                <button class="ind-btn" onclick="toggleGroup('MACD')">MACD</button>
+                <button class="ind-btn" onclick="toggleGroup('RSI')">RSI</button>
+            </div>
+        </div>
+        
+        <!-- 【新增】右侧指标面板 -->
+        <div id="indicator-panel">
+            <div id="panel-header">
+                <span>📊 技术指标 / Indicators</span>
+                <button onclick="collapseAll()" style="background:transparent;border:none;color:#b2b5be;cursor:pointer;font-size:11px;">全部折叠</button>
+            </div>
+            <div id="panel-content">
+                <!-- 指标分类将在这里动态生成 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let mainChart, subChart, candleSeries;
+        const seriesMap = new Map();
+        // 【修复】恢复 activeGroups 用于底部按钮兼容，同时保留 indicatorStates 用于独立控制
+        const activeGroups = new Set();  // 用于底部按钮状态
+        const indicatorStates = new Map();  // 存储每个指标的独立显隐状态
+        let isChartInitialized = false;
+        let isSyncing = false;
+
+        // 指标分类定义（中英文）
+        const indicatorCategories = [
+            {
+                name: '移动平均线 / Moving Averages',
+                key: 'MA_CATEGORY',
+                indicators: [
+                    { name: '简单移动平均', en: 'SMA', key: 'SMA', group: 'MA' },
+                    { name: '指数移动平均', en: 'EMA', key: 'EMA', group: 'EMA' },
+                    { name: '加权移动平均', en: 'WMA', key: 'WMA', group: 'MA' },
+                    { name: 'Hull 移动平均', en: 'HMA', key: 'HMA', group: 'MA' }
+                ]
+            },
+            {
+                name: '趋势指标 / Trend',
+                key: 'TREND_CATEGORY',
+                indicators: [
+                    { name: '抛物线转向', en: 'SAR', key: 'SAR', group: 'TREND' },
+                    { name: '超级趋势', en: 'SuperTrend', key: 'SUPER', group: 'TREND' },
+                    { name: '平均趋向指数', en: 'ADX', key: 'ADX', group: 'TREND' },
+                    { name: '一目均衡图', en: 'Ichimoku', key: 'ICHIMOKU', group: 'TREND' }
+                ]
+            },
+            {
+                name: '振荡指标 / Oscillators',
+                key: 'OSCILLATOR_CATEGORY',
+                indicators: [
+                    { name: '相对强弱指数', en: 'RSI', key: 'RSI', group: 'RSI' },
+                    { name: '随机指标', en: 'KDJ', key: 'KDJ', group: 'RSI' },
+                    { name: '商品通道指数', en: 'CCI', key: 'CCI', group: 'RSI' },
+                    { name: '威廉指标', en: 'Williams %R', key: 'WILLIAMS', group: 'RSI' }
+                ]
+            },
+            {
+                name: '动量指标 / Momentum',
+                key: 'MOMENTUM_CATEGORY',
+                indicators: [
+                    { name: 'MACD', en: 'MACD', key: 'MACD', group: 'MACD' },
+                    { name: '动量', en: 'Momentum', key: 'MOMENTUM', group: 'MACD' },
+                    { name: '变化率', en: 'ROC', key: 'ROC', group: 'MACD' }
+                ]
+            },
+            {
+                name: '波动率 / Volatility',
+                key: 'VOLATILITY_CATEGORY',
+                indicators: [
+                    { name: '布林带', en: 'Bollinger Bands', key: 'BOLL', group: 'BOLL' },
+                    { name: '平均真实波幅', en: 'ATR', key: 'ATR', group: 'VOLATILITY' },
+                    { name: '标准差', en: 'Standard Deviation', key: 'STDDEV', group: 'VOLATILITY' }
+                ]
+            },
+            {
+                name: '成交量 / Volume',
+                key: 'VOLUME_CATEGORY',
+                indicators: [
+                    { name: '成交量', en: 'Volume', key: 'VOL', group: 'VOL' },
+                    { name: '成交量加权平均', en: 'VWMA', key: 'VWMA', group: 'VOL' },
+                    { name: '资金流量指数', en: 'MFI', key: 'MFI', group: 'VOL' }
+                ]
+            },
+            {
+                name: '自定义指标 / Custom',
+                key: 'CUSTOM_CATEGORY',
+                indicators: [
+                    { name: '年度价格剖面', en: 'Yearly Profile', key: 'PROFILE', group: 'PROFILE' }
+                ]
+            }
+        ];
+
+        // 初始化右侧指标面板
+        function initIndicatorPanel() {
+            const panelContent = document.getElementById('panel-content');
+            
+            indicatorCategories.forEach((category, index) => {
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'category';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'category-header';
+                headerDiv.innerHTML = `
+                    <span>${category.name}</span>
+                    <span class="arrow">▼</span>
+                `;
+                headerDiv.onclick = () => toggleCategory(category.key);
+                
+                const itemsDiv = document.createElement('div');
+                itemsDiv.className = 'category-items';
+                itemsDiv.id = `category-${category.key}`;
+                
+                category.indicators.forEach(ind => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'indicator-item';
+                    itemDiv.dataset.key = ind.key;
+                    itemDiv.dataset.group = ind.group;
+                    
+                    // 默认只有 SMA 是激活的
+                    const defaultActive = ind.key === 'SMA';
+                    if (defaultActive) {
+                        itemDiv.classList.add('active');
+                        indicatorStates.set(ind.key, true);
+                        activeGroups.add(ind.group);  // 同步到 activeGroups
+                    } else {
+                        indicatorStates.set(ind.key, false);
+                    }
+                    
+                    itemDiv.innerHTML = `
+                        <span>${ind.name}</span>
+                        <span class="en-name">${ind.en}</span>
+                    `;
+                    itemDiv.onclick = (e) => {
+                        e.stopPropagation();
+                        toggleIndicator(ind.key, itemDiv);
+                    };
+                    itemsDiv.appendChild(itemDiv);
+                });
+                
+                categoryDiv.appendChild(headerDiv);
+                categoryDiv.appendChild(itemsDiv);
+                panelContent.appendChild(categoryDiv);
+            });
+            
+            // 初始化底部按钮状态
+            updateBottomBarState();
+        }
+
+        // 切换单个指标
+        function toggleIndicator(indicatorKey, element) {
+            const currentState = indicatorStates.get(indicatorKey);
+            const newState = !currentState;
+            
+            // 更新状态
+            indicatorStates.set(indicatorKey, newState);
+            
+            // 更新 UI
+            element.classList.toggle('active', newState);
+            
+            // 更新 activeGroups（用于底部按钮）
+            const group = element.dataset.group;
+            const anyActiveInGroup = Array.from(document.querySelectorAll(`.indicator-item[data-group="${group}"]`))
+                .some(item => item.classList.contains('active'));
+            
+            if (anyActiveInGroup) {
+                activeGroups.add(group);
+            } else {
+                activeGroups.delete(group);
+            }
+            
+            // 同步底部按钮状态
+            updateBottomBarState();
+            
+            // 控制图表系列显隐
+            seriesMap.forEach((info, seriesName) => {
+                if (info.indicatorKey === indicatorKey || info.group === indicatorKey) {
+                    info.series.applyOptions({ visible: newState });
+                }
+            });
+            
+            console.log(`Indicator ${indicatorKey}: ${newState ? 'ON' : 'OFF'}`);
+        }
+
+        // 更新底部按钮状态
+        function updateBottomBarState() {
+            document.querySelectorAll('.ind-btn').forEach(btn => {
+                const groupName = btn.innerText;
+                btn.classList.toggle('active', activeGroups.has(groupName));
+            });
+        }
+
+        // 折叠/展开分类
+        function toggleCategory(categoryKey) {
+            const itemsDiv = document.getElementById(`category-${categoryKey}`);
+            const header = itemsDiv.previousElementSibling;
+            
+            itemsDiv.classList.toggle('collapsed');
+            header.classList.toggle('collapsed');
+        }
+
+        // 全部折叠
+        function collapseAll() {
+            document.querySelectorAll('.category-items').forEach(div => {
+                div.classList.add('collapsed');
+            });
+            document.querySelectorAll('.category-header').forEach(header => {
+                header.classList.add('collapsed');
+            });
+        }
+
+        // 底部按钮点击（切换整个组）
+        window.toggleGroup = function(groupName) {
+            // 找到该组所有指标
+            const groupItems = document.querySelectorAll(`.indicator-item[data-group="${groupName}"]`);
+            const anyActive = Array.from(groupItems).some(item => item.classList.contains('active'));
+            
+            // 切换该组所有指标
+            groupItems.forEach(item => {
+                if (anyActive) {
+                    // 如果组内有激活的，则全部关闭
+                    item.classList.remove('active');
+                    indicatorStates.set(item.dataset.key, false);
+                } else {
+                    // 否则全部打开
+                    item.classList.add('active');
+                    indicatorStates.set(item.dataset.key, true);
+                }
+            });
+            
+            // 更新 activeGroups
+            if (!anyActive) {
+                activeGroups.add(groupName);
+            } else {
+                activeGroups.delete(groupName);
+            }
+            
+            // 更新底部按钮
+            updateBottomBarState();
+            
+            // 控制图表系列
+            seriesMap.forEach((info) => {
+                if (info.group === groupName) {
+                    info.series.applyOptions({ visible: !anyActive });
+                }
+            });
+            
+            console.log(`Group ${groupName}: ${!anyActive ? 'ALL ON' : 'ALL OFF'}`);
+        };
+
+        // 初始化双图表
+        function initChart() {
+            if (typeof LightweightCharts === 'undefined') {
+                console.warn("LightweightCharts library not loaded yet! Retrying in 500ms...");
+                setTimeout(initChart, 500);
+                return;
+            }
+            if (isChartInitialized) return;
+
+            try {
+                const { createChart, CandlestickSeries, LineSeries, HistogramSeries } = LightweightCharts;
+                
+                const chartOptions = {
+                    layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
+                    grid: { vertLines: { color: '#242832' }, horzLines: { color: '#242832' } },
+                    rightPriceScale: { borderColor: '#2a2e39' },
+                    timeScale: { 
+                        borderColor: '#2a2e39', 
+                        timeVisible: true,
+                        secondsVisible: false,
+                        rightOffset: 0,
+                        barSpacing: 10
+                    },
+                    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                };
+
+                mainChart = createChart(document.getElementById('main-chart'), chartOptions);
+                candleSeries = mainChart.addSeries(CandlestickSeries, {
+                    upColor: '#0ecb81', downColor: '#f6465d', borderVisible: false,
+                    wickUpColor: '#0ecb81', wickDownColor: '#f6465d',
+                });
+
+                subChart = createChart(document.getElementById('sub-chart'), {
+                    ...chartOptions,
+                    timeScale: { visible: true, borderColor: '#2a2e39', timeVisible: true }
+                });
+
+                mainChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+                    if (isSyncing || !range) return;
+                    isSyncing = true;
+                    subChart.timeScale().setVisibleLogicalRange(range);
+                    isSyncing = false;
+                });
+
+                subChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+                    if (isSyncing || !range) return;
+                    isSyncing = true;
+                    mainChart.timeScale().setVisibleLogicalRange(range);
+                    isSyncing = false;
+                });
+
+                mainChart.subscribeCrosshairMove((param) => {
+                    if (!param.time) return;
+                    
+                    const ohlcVal = document.getElementById('ohlc-val');
+                    const candleData = param.seriesData.get(candleSeries);
+                    if (candleData) {
+                        const c = candleData.close;
+                        const o = candleData.open;
+                        const cls = c >= o ? 'up' : 'down';
+                        ohlcVal.innerHTML = `O:<span class="${cls}">${o.toFixed(2)}</span> H:${candleData.high.toFixed(2)} L:${candleData.low.toFixed(2)} C:<span class="${cls}">${c.toFixed(2)}</span>`;
+                    }
+                    
+                    const indVals = document.getElementById('ind-vals');
+                    let html = '';
+                    seriesMap.forEach((info, name) => {
+                        if (!activeGroups.has(info.group)) return;
+                        const data = param.seriesData.get(info.series);
+                        if (data && data.value !== undefined) {
+                            html += `<span style="color:${info.series.options().color || '#fff'}; margin-right:8px;">${name}: ${data.value.toFixed(2)}</span>`;
+                        }
+                    });
+                    indVals.innerHTML = html;
+                });
+
+                subChart.subscribeCrosshairMove((param) => {
+                    if (param.time) {
+                        mainChart.setCrosshairPosition(0, param.time, candleSeries);
+                    } else {
+                        mainChart.clearCrosshairPosition();
+                    }
+                });
+
+                isChartInitialized = true;
+                window.isChartInitialized = true;
+                
+                // 初始化指标面板
+                initIndicatorPanel();
+                
+                console.log("Dual charts initialized with indicator panel");
+            } catch (e) {
+                console.error("Failed to initialize charts:", e);
+            }
+        }
+
+        window.setChartData = function(data) {
+            if (!candleSeries) return;
+            candleSeries.setData(data);
+            requestAnimationFrame(() => {
+                mainChart.timeScale().fitContent();
+                subChart.timeScale().fitContent();
+            });
+        };
+
+        window.refreshZoom = function() {
+            if (mainChart && subChart) {
+                setTimeout(() => {
+                    mainChart.timeScale().fitContent();
+                    subChart.timeScale().fitContent();
+                }, 100);
+            }
+        };
+
+        window.addMainIndicator = function(name, dataJson, options = {}) {
+            if (!mainChart) return;
+            try {
+                let data = typeof dataJson === 'string' ? JSON.parse(dataJson) : dataJson;
+                data = data.filter(item => item.time && item.value !== null && !isNaN(item.value));
+                
+                const { LineSeries } = LightweightCharts;
+                
+                if (options.group === 'TREND') {
+                    const series = mainChart.addSeries(LineSeries, {
+                        color: options.color || '#00BCD4',
+                        lineWidth: 1,
+                        lineStyle: 2,
+                        lastValueVisible: false,
+                        priceLineVisible: false,
+                        visible: indicatorStates.get(options.indicatorKey || options.group) || false
+                    });
+                    series.setData(data);
+                    // 【修改】关联指标 key
+                    seriesMap.set(name, { 
+                        series, 
+                        group: options.group,
+                        indicatorKey: options.indicatorKey || options.group
+                    });
+                    return;
+                }
+                
+                const seriesOptions = { 
+                    color: '#2962FF', lineWidth: 2, 
+                    lastValueVisible: false, priceLineVisible: false,
+                    visible: indicatorStates.get(options.indicatorKey || options.group) || false,
+                    ...options 
+                };
+                
+                const series = mainChart.addSeries(LineSeries, seriesOptions);
+                series.setData(data);
+                seriesMap.set(name, { 
+                    series, 
+                    group: options.group || 'default',
+                    indicatorKey: options.indicatorKey || options.group
+                });
+            } catch (e) { console.error('Main Indicator Error:', e); }
+        };
+
+        window.addSubIndicator = function(name, dataJson, options = {}) {
+            if (!subChart) return;
+            try {
+                let data = typeof dataJson === 'string' ? JSON.parse(dataJson) : dataJson;
+                data = data.filter(item => item.time && item.value !== null && !isNaN(item.value));
+                if (data.length === 0) return;
+
+                const { LineSeries, HistogramSeries } = LightweightCharts;
+                const SeriesType = name.includes('Hist') || name.includes('VOL') ? HistogramSeries : LineSeries;
+                
+                const defaultOptions = {
+                    color: '#2962FF', lineWidth: 2,
+                    lastValueVisible: false, priceLineVisible: false,
+                    priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+                    visible: indicatorStates.get(options.indicatorKey || options.group) || false
+                };
+                
+                if (name.includes('VOL') || name.includes('Hist')) {
+                    defaultOptions.priceFormat = { type: 'volume' };
+                }
+
+                const series = subChart.addSeries(SeriesType, { ...defaultOptions, ...options });
+                series.setData(data);
+                seriesMap.set(name, { 
+                    series, 
+                    group: options.group || 'default',
+                    indicatorKey: options.indicatorKey || options.group
+                });
+            } catch (e) { console.error('Sub Indicator Error:', e); }
+        };
+
+        window.addEventListener('resize', () => {
+            if (mainChart) mainChart.resize(document.getElementById('main-chart').clientWidth, document.getElementById('main-chart').clientHeight);
+            if (subChart) subChart.resize(document.getElementById('sub-chart').clientWidth, document.getElementById('sub-chart').clientHeight);
+        });
+
+        window.addEventListener('load', initChart);
+    </script>
+</body>
+</html>

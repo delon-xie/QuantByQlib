@@ -53,6 +53,7 @@ class EventBus(QObject):
     # ── 导航事件 ─────────────────────────────────────────────
     navigate_to = pyqtSignal(str)                    # 参数: 页面名称
     show_ticker_detail = pyqtSignal(str, object)     # 参数: ticker, quant_score(可为None)
+    stock_chart_requested = pyqtSignal(str)           # 参数: ticker
 
     # ── 系统事件 ─────────────────────────────────────────────
     log_message = pyqtSignal(str, str)               # 参数: 级别(INFO/WARN/ERROR), 消息

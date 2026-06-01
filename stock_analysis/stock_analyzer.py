@@ -138,11 +138,11 @@ class StockAnalyzer:
 
         logger.info(
             f"{ticker} 分析完成：综合评分={overall.score}，"
-            f"技术={'✓' if tech_result else '✗'}，"
+            f"技术：{'完成' if tech_result else '✗'}，"
             f"六维={score_result.total_score if score_result and score_result.available else '✗'}，"
-            f"K线={'✓' if chart_result and chart_result.available else '✗'}，"
-            f"基本面={'✓' if fund_result else '✗'}，"
-            f"情绪={'✓' if senti_result and senti_result.available else '✗'}"
+            f"K线：{'完成' if chart_result and chart_result.available else '✗'}，"
+            f"基本面：{'完成' if fund_result else '✗'}，"
+            f"情绪：{'完成' if senti_result and senti_result.available else '✗'}"
         )
 
         return StockReport(

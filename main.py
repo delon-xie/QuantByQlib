@@ -14,6 +14,7 @@ os.environ["LOKY_MAX_DEPTH"] = "1"
 # 设置环境变量
 os.environ["QT_QPA_PLATFORM"] = "cocoa"  # macOS
 os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--single-process"  # 解决共享上下文问题
+os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"  # 禁用 sandbox，解决页面加载失败问题
 
 # 导入 QtCore 并设置属性
 from PyQt6.QtCore import QCoreApplication, Qt

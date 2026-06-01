@@ -23,6 +23,7 @@ env/
 Users
 qlib_data/
 binance_data/
+custom_pools/
 scripts/core
 tests
 tests_final

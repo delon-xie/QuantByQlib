@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>BB Test</title></head>
+<body>
+<script src="../related project/lightweight-charts-indicators/dist/lightweight-charts-indicators.umd.js"></script>
+<script>
+var lci = window.LightweightChartsIndicators;
+var reg = lci.indicatorRegistry;
+var bbEntry = null;
+for (var i = 0; i < reg.length; i++) {
+  if (reg[i].id === 'BollingerBands') { bbEntry = reg[i]; break; }
+}
+console.log('BB registry entry:', JSON.stringify(bbEntry));
+
+// Find the calculate function
+var bbCalc = null;
+for (var k in lci) {
+  if (k === 'indicatorRegistry' || k === 'version') continue;
+  var c = lci[k];
+  if (c && c.calculate && c.metadata && c.metadata.title === 'Bollinger Bands') {
+    bbCalc = c;
+    console.log('Found BB calculate function as key:', k);
+    console.log('metadata:', JSON.stringify(c.metadata));
+    console.log('plotConfig:', JSON.stringify(c.plotConfig));
+    console.log('defaultInputs:', JSON.stringify(c.defaultInputs));
+    console.log('inputConfig:', JSON.stringify(c.inputConfig));
+    break;
+  }
+}
+
+// Generate mock price data (200 bars, trending up from 50 to 150)
+var bars = [];
+for (var i = 0; i < 200; i++) {
+  var base = 50 + (i / 200) * 100;
+  var noise = (Math.random() - 0.5) * 10;
+  var close = base + noise;
+  bars.push({
+    time: '2024-01-' + String(i + 1).padStart(2, '0'),
+    open: close - 2,
+    high: close + 5,
+    low: close - 5,
+    close: close,
+    volume: 1000000
+  });
+}
+
+if (bbCalc) {
+  var result = bbCalc.calculate(bars, { length: 20, src: 'close', mult: 2 });
+  console.log('BB result plots keys:', Object.keys(result.plots));
+  
+  // Sample some values
+  var plot0 = result.plots.plot0;
+  var plot1 = result.plots.plot1;
+  var plot2 = result.plots.plot2;
+  
+  console.log('=== Plot0 (Basis/SMA) ===');
+  console.log('length:', plot0.length);
+  console.log('First 5:', plot0.slice(0, 5).map(function(d) { return d.value; }));
+  console.log('Last 5:', plot0.slice(-5).map(function(d) { return d.value; }));
+  console.log('Min:', Math.min.apply(null, plot0.map(function(d) { return d.value; })));
+  console.log('Max:', Math.max.apply(null, plot0.map(function(d) { return d.value; })));
+  
+  console.log('=== Plot1 (Upper) ===');
+  console.log('First 5:', plot1.slice(0, 5).map(function(d) { return d.value; }));
+  console.log('Last 5:', plot1.slice(-5).map(function(d) { return d.value; }));
+  console.log('Min:', Math.min.apply(null, plot1.map(function(d) { return d.value; })));
+  console.log('Max:', Math.max.apply(null, plot1.map(function(d) { return d.value; })));
+  
+  console.log('=== Plot2 (Lower) ===');
+  console.log('First 5:', plot2.slice(0, 5).map(function(d) { return d.value; }));
+  console.log('Last 5:', plot2.slice(-5).map(function(d) { return d.value; }));
+  console.log('Min:', Math.min.apply(null, plot2.filter(function(d) { return d; }).map(function(d) { return d.value; })));
+  console.log('Max:', Math.max.apply(null, plot2.filter(function(d) { return d; }).map(function(d) { return d.value; })));
+  
+  // Check early values (first 19 bars should be NaN since SMA needs 20)
+  console.log('=== Early NaN check ===');
+  console.log('plot0[18]:', plot0[18]);
+  console.log('plot0[19]:', plot0[19]);
+  console.log('plot0[20]:', plot0[20]);
+  
+  // Check for null/NaN in the suffix
+  var nanCount = 0;
+  for (var i = 0; i < plot0.length; i++) {
+    if (plot0[i] == null || plot0[i].value == null || (typeof plot0[i].value === 'number' && !isFinite(plot0[i].value))) nanCount++;
+    // Also check for very large or very small values
+    if (plot0[i] && plot0[i].value != null && Math.abs(plot0[i].value) > 10000) {
+      console.log('SUSPICIOUS LARGE VALUE at', i, ':', plot0[i].value);
+    }
+  }
+  console.log('Null/NaN count in plot0:', nanCount);
+  
+  // Check fills
+  console.log('Fills:', result.fills ? JSON.stringify(result.fills) : 'none');
+  
+  // Check hlines
+  console.log('Hlines:', result.hlines ? JSON.stringify(result.hlines) : 'none');
+  
+  // Also test with ATR
+  for (var k in lci) {
+    if (lci[k] && lci[k].calculate && lci[k].metadata && lci[k].metadata.title === 'Average True Range') {
+      var atrResult = lci[k].calculate(bars, { length: 14 });
+      console.log('\n=== ATR ===');
+      var pk = Object.keys(atrResult.plots);
+      console.log('plots:', pk);
+      var d = atrResult.plots[pk[0]];
+      console.log('First 5:', d.slice(0, 5).map(function(x) { return x && x.value; }));
+      console.log('Last 5:', d.slice(-5).map(function(x) { return x && x.value; }));
+      console.log('Min:', Math.min.apply(null, d.filter(Boolean).map(function(x) { return x.value; })));
+      console.log('Max:', Math.max.apply(null, d.filter(Boolean).map(function(x) { return x.value; })));
+      break;
+    }
+  }
+} else {
+  console.error('BollingerBands not found in LCI');
+}
+</script>
+</body>
+</html>

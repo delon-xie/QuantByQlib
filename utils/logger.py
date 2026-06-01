@@ -28,7 +28,8 @@ def setup_logger(log_dir: str | Path | None = None, level: str = "INFO") -> None
 
     # 文件处理器
     if log_dir is None:
-        log_dir = Path.home() / ".quantbyqlib" / "logs"
+        # 使用项目目录内的 logs 目录，避免权限问题
+        log_dir = Path(__file__).parent.parent / "logs"
     log_dir = Path(log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
 
