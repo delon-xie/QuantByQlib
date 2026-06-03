@@ -34,111 +34,253 @@ def _to_qlib_symbol(symbol: str) -> str:
     return symbol
 
 
-def _get_qlib_ohlcv(ticker: str, period_days: int = 365, use_adj: bool = False) -> pd.DataFrame | None:
+def _get_qlib_ohlcv_advanced(ticker: str, period_days: int = 365 * 5, 
+                            adjust_type: str = "none", 
+                            base_price: float = None) -> pd.DataFrame | None:
     """
-    直接从 qlib D.features() 加载 K 线数据
-    返回标准 OHLCV DataFrame（列: date, open, high, low, close, volume）
+    从 qlib 加载 K 线数据，支持多种复权类型
     
     Args:
         ticker: 股票代码
         period_days: 数据周期天数
-        use_adj: 是否使用复权数据（默认 False，使用原始价格）
+        adjust_type: 复权类型
+            - "none": 不复权 (原始价格)
+            - "forward": 前复权 (历史价格保持不变)
+            - "backward": 后复权 (最新价格保持不变，qlib默认)
+            - "normalized": qlib归一化数据 (首日=1)
+        base_price: 基准价格 (仅用于custom模式)，如最新股价
     """
     from qlib.data import D
+    from datetime import date, timedelta
+    import pandas as pd
     from core.app_state import get_state
+    from core.qlibhelper import _check_qlib_init
+    from core.event_bus import get_event_bus
 
-    reg = get_state().reg
+    # 确保 QLib 已初始化
+    state = get_state()
+    if not state.qlib_initialized:
+        try:
+            bus = get_event_bus()
+            _check_qlib_init(bus)
+        except Exception as e:
+            print(f"[DEBUG] QLib 初始化失败: {e}")
+            return None
+
+    reg = state.reg
     ticker = ticker.upper().strip()
+
+    # 根据股票代码后缀自动推断区域
+    if ticker.endswith('.HK'):
+        target_reg = 'hk'
+    elif ticker.startswith('SH') or ticker.startswith('SZ') or ticker.startswith('BJ'):
+        target_reg = 'cn'
+    elif ticker.endswith('USDT'):
+        target_reg = 'bt'
+    else:
+        target_reg = reg
+
+    if target_reg != reg:
+        print(f"[DEBUG] Stock code suggests region {target_reg}, reinitializing QLib...")
+        state.reg = target_reg
+        state.qlib_initialized = False
+        try:
+            bus = get_event_bus()
+            _check_qlib_init(bus)
+        except Exception as e:
+            print(f"[DEBUG] QLib reinitialization failed: {e}")
+            return None
+
+    reg = target_reg
 
     if reg == "cn":
         ticker = _to_qlib_symbol(ticker)
+    elif reg == "hk":
+        if not ticker.endswith('.HK'):
+            ticker = ticker + '.HK'
+        parts = ticker.split('.')
+        if len(parts) == 2 and parts[1] == 'HK':
+            ticker = parts[0].zfill(4) + '.HK'
 
     end_date = date.today().isoformat()
     start_date = (date.today() - timedelta(days=period_days + 30)).isoformat()
 
-    # 总是获取 factor 字段用于检测数据是否已被复权
+    # 获取数据，包含因子
     fields = ["$open", "$high", "$low", "$close", "$volume", "$factor"]
     
     try:
         df = D.features([ticker], fields, start_time=start_date, end_time=end_date)
         if df is None or df.empty:
+            print(f"[DEBUG] No data found for {ticker}")
             return None
 
         df = df.reset_index()
         
-        # 检查是否需要处理复权数据
-        # QLib 默认返回的是后复权数据（已应用复权因子）
-        is_adj_data = False
-        if "$factor" in df.columns:
-            first_factor = df["$factor"].iloc[0] if len(df) > 0 else 1.0
+        if "$factor" not in df.columns or len(df) == 0:
+            print(f"[WARNING] No factor column found for {ticker}")
+            return None
+        
+        # 避免除零错误
+        factor_series = df["$factor"].replace(0, 1.0)
+        
+        # ================================================================
+        # 核心：处理不同复权类型
+        # ================================================================
+        if adjust_type == "none":
+            # 不复权：还原为原始交易价格
+            print(f"[DEBUG] Calculating non-adjusted prices (original trading prices)")
             
-            if use_adj:
-                # 用户要求后复权数据：QLib 返回的已经是后复权数据，无需额外处理
-                print(f"[DEBUG] Using adjusted (backward) data, factor={first_factor:.4f}")
-                is_adj_data = True
-            else:
-                # 用户要求原始价格：需要除以复权因子还原
-                if first_factor != 1.0 and first_factor > 0:
-                    print(f"[DEBUG] Reverting to original prices, factor={first_factor:.4f}")
-                    print(f"[DEBUG] Current close: {df['$close'].iloc[0]:.2f}")
-                    df["$open"] = df["$open"] / df["$factor"]
-                    df["$high"] = df["$high"] / df["$factor"]
-                    df["$low"] = df["$low"] / df["$factor"]
-                    df["$close"] = df["$close"] / df["$factor"]
-                    print(f"[DEBUG] Reverted close: {df['$close'].iloc[0]:.2f}")
-                    is_adj_data = True
-
-        df = df.rename(columns={
+            for col in ["$open", "$high", "$low", "$close"]:
+                if col in df.columns:
+                    df[col] = df[col] / factor_series
+            
+            # 成交量通常不需要调整，保持原始成交量
+            #if "$volume" in df.columns:
+            #    # 如果因子不是1，可能需要调整成交量
+            #    if (factor_series != 1.0).any():
+            #        df["$volume"] = df["$volume"] * factor_series
+        
+        elif adjust_type == "forward":
+            # 前复权：以历史价格为基准，调整后续价格
+            print(f"[DEBUG] Calculating forward-adjusted prices")
+            
+            # 获取最新因子（用于计算调整比例）
+            latest_factor = factor_series.iloc[-1]
+            
+            if latest_factor > 0:
+                # 计算调整比例
+                adjustment_ratio = factor_series / latest_factor
+                
+                for col in ["$open", "$high", "$low", "$close"]:
+                    if col in df.columns:
+                        df[col] = df[col] / adjustment_ratio
+                
+                # 前复权成交量调整
+                if "$volume" in df.columns:
+                    df["$volume"] = df["$volume"] * adjustment_ratio
+        
+        elif adjust_type == "backward":
+            # 后复权：以最新价格为基准，调整历史价格
+            # 这是qlib默认的存储方式
+            print(f"[DEBUG] Using backward-adjusted prices (QLib default)")
+            
+            # qlib已经是后复权，但我们可以确保一致性
+            # 获取基准价格（如果需要标准化到特定价格）
+            if base_price is not None and len(df) > 0:
+                latest_close = df["$close"].iloc[-1]
+                if latest_close > 0:
+                    adjustment_ratio = base_price / latest_close
+                    for col in ["$open", "$high", "$low", "$close"]:
+                        if col in df.columns:
+                            df[col] = df[col] * adjustment_ratio
+                    
+                    if "$volume" in df.columns:
+                        df["$volume"] = df["$volume"] / adjustment_ratio
+        
+        elif adjust_type == "normalized":
+            # 使用qlib的归一化数据（首日=1）
+            print(f"[DEBUG] Using QLib normalized prices (first day = 1)")
+            # 无需额外处理，使用原始qlib数据
+        
+        else:
+            print(f"[ERROR] Unknown adjust_type: {adjust_type}, using 'none'")
+            # 默认返回不复权
+            for col in ["$open", "$high", "$low", "$close"]:
+                if col in df.columns:
+                    df[col] = df[col] / factor_series
+        
+        # 记录调试信息
+        if len(df) > 0:
+            first_close = df["$close"].iloc[0] if "$close" in df.columns else None
+            last_close = df["$close"].iloc[-1] if "$close" in df.columns else None
+            print(f"[DEBUG] {adjust_type}: First close: {first_close:.4f}, Last close: {last_close:.4f}")
+            print(f"[DEBUG] Factor range: {df['$factor'].min():.6f} ~ {df['$factor'].max():.6f}")
+        
+        # 重命名列
+        rename_dict = {
             "datetime": "date",
             "$open": "open",
-            "$high": "high",
+            "$high": "high", 
             "$low": "low",
             "$close": "close",
             "$volume": "volume",
-        })
+        }
         
-        # 调试：检查数据状态
-        if is_adj_data:
-            print(f"[DEBUG] Data was adjusted, use_adj={use_adj}")
+        # 只重命名存在的列
+        df = df.rename(columns={k: v for k, v in rename_dict.items() if k in df.columns})
         
-        # 调试：检查最新数据
-        if len(df) > 0:
-            latest_date = df["date"].iloc[-1]
-            latest_open = df["open"].iloc[-1]
-            latest_close = df["close"].iloc[-1]
-            print(f"[DEBUG] Latest data - Date: {latest_date}, Open: {latest_open:.2f}, Close: {latest_close:.2f}")
+        # 删除不需要的列
+        columns_to_drop = ["instrument", "symbol", "$factor"]
+        for col in columns_to_drop:
+            if col in df.columns:
+                df = df.drop(columns=[col])
         
-        # 调试：检查成交量数据
-        if 'volume' in df.columns:
-            print(f"[DEBUG] Volume column exists. Stats: min={df['volume'].min()}, max={df['volume'].max()}, mean={df['volume'].mean():.2f}")
-            print(f"[DEBUG] First 5 volume values: {df['volume'].head().tolist()}")
-            if df['volume'].max() == 0:
-                print("[DEBUG] WARNING: All volume values are 0!")
-        else:
-            print("[DEBUG] Volume column NOT found after rename!")
-
-        if "instrument" in df.columns:
-            df = df.drop(columns=["instrument"])
-        if "symbol" in df.columns:
-            df = df.drop(columns=["symbol"])
-        if "$factor" in df.columns:
-            df = df.drop(columns=["$factor"])
-
-        df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
-
+        # 格式化日期
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+        
+        # 数值类型转换
         numeric_cols = ["open", "high", "low", "close", "volume"]
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
-
-        df = df.dropna(subset=["close"])
+        
+        # 处理异常值
+        for col in ["open", "high", "low", "close"]:
+            if col in df.columns:
+                df.loc[df[col] > 1e300, col] = pd.NA
+        
+        # 删除无效行
+        df = df.dropna(subset=["close", "open", "high", "low"], how="all")
+        
+        if df.empty:
+            print(f"[DEBUG] All data filtered out for {ticker}")
+            return None
+        
+        # 填充成交量NaN
+        if "volume" in df.columns:
+            df["volume"] = df["volume"].fillna(0)
+        
         return df
+        
     except Exception as e:
         from loguru import logger
-        logger.warning(f"[ChartPage] qlib D.features 加载 {ticker} 失败: {e}")
+        logger.error(f"[ChartPage] Error loading {ticker} with adjust_type={adjust_type}: {e}")
         return None
 
 
+def get_stock_data_with_adjustment(ticker: str, period_days: int = 365, 
+                                  adjust_type: str = "none") -> dict:
+    """
+    获取股票的三种复权数据，便于比较
+    
+    Args:
+        ticker: 股票代码
+        period_days: 数据周期天数
+        adjust_type: 主要返回的数据类型
+    
+    Returns:
+        dict: 包含不同复权类型的数据
+    """
+    result = {}
+    
+    # 获取指定类型的数据
+    main_df = _get_qlib_ohlcv_advanced(ticker, period_days, adjust_type)
+    
+    if main_df is not None:
+        result[adjust_type] = main_df
+        
+        # 获取其他类型用于比较
+        for adj_type in ["none", "forward", "backward", "normalized"]:
+            if adj_type != adjust_type:
+                try:
+                    df = _get_qlib_ohlcv_advanced(ticker, period_days, adj_type)
+                    if df is not None:
+                        result[adj_type] = df
+                except Exception as e:
+                    print(f"[DEBUG] Failed to get {adj_type} data: {e}")
+    
+    return result
 class _DataLoaderWorker(QObject):
     finished = pyqtSignal(object)
     error = pyqtSignal(str)
@@ -159,7 +301,9 @@ class _DataLoaderWorker(QObject):
             if self._stopped:
                 return
             
-            df = _get_qlib_ohlcv(self.ticker, self.period_days, use_adj=self.use_adj)
+            #df = _get_qlib_ohlcv(self.ticker, self.period_days, use_adj=self.use_adj)
+            df = _get_qlib_ohlcv_advanced(self.ticker, self.period_days, adjust_type="backward" if self.use_adj else "none")
+            
             
             if self._stopped:
                 return

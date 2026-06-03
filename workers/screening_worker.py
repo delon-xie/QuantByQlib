@@ -47,6 +47,47 @@ class ScreeningWorker(QRunnable):
         self.state = get_state()
         self.setAutoDelete(True)
 
+    def safe_emit_signal(self, signal_name: str, *args) -> bool:
+        """
+        安全发射信号，避免 RuntimeError: wrapped C/C++ object has been deleted
+        
+        参数:
+            signal_name: 信号名称，如 'progress', 'completed', 'failed', 'log'
+            *args: 信号参数
+            
+        返回:
+            bool: 是否成功发射
+        """
+        try:
+            signal = getattr(self.signals, signal_name, None)
+            if signal is not None and hasattr(signal, 'emit'):
+                signal.emit(*args)
+                return True
+        except RuntimeError:
+            # PyQt对象已被删除
+            logger.debug(f"ScreeningWorker [{self.strategy_key}] 信号 {signal_name} 发射失败：对象已删除")
+            return False
+        except Exception as e:
+            logger.debug(f"ScreeningWorker [{self.strategy_key}] 信号 {signal_name} 发射失败：{e}")
+            return False
+        return False
+    
+    def _progress(self, pct: int, msg: str) -> None:
+        """使用安全方法更新进度"""
+        self.safe_emit_signal('progress', pct, msg)
+    
+    def _failed(self, msg: str) -> None:
+        """使用安全方法记录失败"""
+        self.safe_emit_signal('failed', msg)
+    
+    def _completed(self, results: list) -> None:
+        """使用安全方法记录完成"""
+        self.safe_emit_signal('completed', results)
+    
+    def _log(self, msg: str) -> None:
+        """使用安全方法记录日志"""
+        self.safe_emit_signal('log', msg)
+
     def unique_list(self, seq):
         seen = set()
         return [x for x in seq if not (x in seen or seen.add(x))]
@@ -84,7 +125,7 @@ class ScreeningWorker(QRunnable):
         def progress_cb(pct: int, msg: str):
             if self._cancelled:
                 raise InterruptedError("用户取消")
-            self.signals.progress.emit(pct, msg)
+            self._progress(pct, msg)
 
         try:
             from screening.stock_screener import StockScreener
@@ -98,18 +139,17 @@ class ScreeningWorker(QRunnable):
             )
 
             if self._cancelled:
-                self.signals.failed.emit("用户取消")
+                self._failed("用户取消")
                 return
 
-            self.signals.progress.emit(100, f"✅ 完成，选出 {len(results)} 支")
+            self._progress(100, f"✅ 完成，选出 {len(results)} 支")
 
             # 同步到事件总线（让其他页面监听）
             try:
                 from core.event_bus import get_event_bus
                 bus = get_event_bus()
             except Exception as ex:
-                self.signals.log.emit(f"事件提交异常 [{self.strategy_key}] （非致命）：{ex}")
-                pass
+                self._log(f"事件提交异常 [{self.strategy_key}] （非致命）：{ex}")
 
             # 自动写入规范化信号 CSV 到「美股交易日记/signals/」
             try:
@@ -118,17 +158,25 @@ class ScreeningWorker(QRunnable):
                     else export_signals_empty(self.strategy_key)
                 logger.info(f"ScreeningWorker [{self.strategy_key}] 信号 CSV → {sig_path}")
             except Exception as ex:
-                self.signals.log.emit(f"ScreeningWorker [{self.strategy_key}] 信号 CSV 写入失败（非致命）：{ex}")
+                self._log(f"ScreeningWorker [{self.strategy_key}] 信号 CSV 写入失败（非致命）：{ex}")
 
             logger.info(f"ScreeningWorker [{self.strategy_key}] 完成，{len(results)} 支")
             
-            from core.event_bus import get_event_bus
-            bus = get_event_bus()
-            self.signals.completed.emit(results)       
-            bus.screening_completed.emit(results)
+            # 安全发射完成信号
+            self._completed(results)
+            
+            # 安全发射事件总线信号
+            try:
+                from core.event_bus import get_event_bus
+                bus = get_event_bus()
+                bus.screening_completed.emit(results)
+            except RuntimeError:
+                logger.debug(f"ScreeningWorker [{self.strategy_key}] 事件总线对象已删除")
+            except Exception as e:
+                logger.debug(f"ScreeningWorker [{self.strategy_key}] 事件总线发射失败：{e}")
 
         except InterruptedError as e:
-            self.signals.failed.emit(str(e))
+            self._failed(str(e))
             try:
                 from core.event_bus import get_event_bus
                 get_event_bus().screening_failed.emit(str(e))
@@ -137,7 +185,7 @@ class ScreeningWorker(QRunnable):
 
         except Exception as e:
             logger.error(f"ScreeningWorker [{self.strategy_key}] 异常：{e}")
-            self.signals.failed.emit(str(e))
+            self._failed(str(e))
             try:
                 from core.event_bus import get_event_bus
                 get_event_bus().screening_failed.emit(str(e))

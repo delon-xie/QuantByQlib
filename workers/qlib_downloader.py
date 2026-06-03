@@ -43,6 +43,47 @@ class QlibDownloadWorker(QRunnable):
         self._cancelled = False
         self.setAutoDelete(True)
 
+    def safe_emit_signal(self, signal_name: str, *args) -> bool:
+        """
+        安全发射信号，避免 RuntimeError: wrapped C/C++ object has been deleted
+        
+        参数:
+            signal_name: 信号名称，如 'progress', 'log_line', 'completed', 'error'
+            *args: 信号参数
+            
+        返回:
+            bool: 是否成功发射
+        """
+        try:
+            signal = getattr(self.signals, signal_name, None)
+            if signal is not None and hasattr(signal, 'emit'):
+                signal.emit(*args)
+                return True
+        except RuntimeError:
+            # PyQt对象已被删除
+            logger.debug(f"[QlibDownloadWorker] 信号 {signal_name} 发射失败：对象已删除")
+            return False
+        except Exception as e:
+            logger.debug(f"[QlibDownloadWorker] 信号 {signal_name} 发射失败：{e}")
+            return False
+        return False
+    
+    def _progress(self, pct: int, msg: str) -> None:
+        """使用安全方法更新进度"""
+        self.safe_emit_signal('progress', pct, msg)
+    
+    def _log_line(self, line: str) -> None:
+        """使用安全方法记录日志行"""
+        self.safe_emit_signal('log_line', line)
+    
+    def _completed(self, success: bool, msg: str) -> None:
+        """使用安全方法记录完成"""
+        self.safe_emit_signal('completed', success, msg)
+    
+    def _error(self, msg: str) -> None:
+        """使用安全方法记录错误"""
+        self.safe_emit_signal('error', msg)
+
     def cancel(self) -> None:
         """请求取消（下次轮询时生效）"""
         self._cancelled = True
@@ -54,8 +95,8 @@ class QlibDownloadWorker(QRunnable):
             self._run_download()
         except Exception as e:
             #logger.exception(f"下载 Worker 异常：{e}")
-            self.signals.error.emit(str(e))
-            self.signals.completed.emit(False, str(e))
+            self._error(str(e))
+            self._completed(False, str(e))
 
     def _run_download(self) -> None:
         from data.qlib_manager import build_download_command, QLIB_DATA_DIR, init_qlib
@@ -66,20 +107,20 @@ class QlibDownloadWorker(QRunnable):
         # 确保目标目录存在
         QLIB_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-        self.signals.progress.emit(2, "正在构建下载命令...")
-        self.signals.log_line.emit(f"[INFO] 开始下载 Qlib {reg_name} 数据，stock pool: {self.scope}")
+        self._progress(2, "正在构建下载命令...")
+        self._log_line(f"[INFO] 开始下载 Qlib {reg_name} 数据，stock pool: {self.scope}")
 
         try:
             cmd = build_download_command(self.scope, self.start_date)
         except (FileNotFoundError, RuntimeError) as e:
             # 采集器脚本未找到 → 使用 SunsetWolf 美股预打包数据集
-            self.signals.log_line.emit(f"[WARN] {e}")
-            self.signals.log_line.emit(f"[INFO] 尝试下载 SunsetWolf {reg_name}  Qlib 数据集...")
+            self._log_line(f"[WARN] {e}")
+            self._log_line(f"[INFO] 尝试下载 SunsetWolf {reg_name}  Qlib 数据集...")
             self._fallback_download()
             return
 
-        self.signals.progress.emit(5, "正在启动采集器...")
-        self.signals.log_line.emit(f"[CMD] {' '.join(cmd[:4])} ...")
+        self._progress(5, "正在启动采集器...")
+        self._log_line(f"[CMD] {' '.join(cmd[:4])} ...")
 
         try:
             proc = subprocess.Popen(
@@ -92,8 +133,8 @@ class QlibDownloadWorker(QRunnable):
                 env={**os.environ},
             )
         except Exception as e:
-            self.signals.error.emit(f"无法启动采集器：{e}")
-            self.signals.completed.emit(False, str(e))
+            self._error(f"无法启动采集器：{e}")
+            self._completed(False, str(e))
             return
 
         # 读取输出行，解析进度
@@ -102,45 +143,47 @@ class QlibDownloadWorker(QRunnable):
         for line in iter(proc.stdout.readline, ""):
             if self._cancelled:
                 proc.terminate()
-                self.signals.log_line.emit("[INFO] 用户取消下载")
-                self.signals.completed.emit(False, "已取消")
+                self._log_line("[INFO] 用户取消下载")
+                self._completed(False, "已取消")
                 return
 
             line = line.rstrip()
             if line:
-                self.signals.log_line.emit(line)
+                self._log_line(line)
 
             # 简单进度估算（根据输出行数）
             if any(kw in line for kw in ["Downloading", "downloading", "fetching", "GET"]):
                 downloaded += 1
                 pct = min(5 + int(downloaded / total_stocks * 85), 90)
-                self.signals.progress.emit(pct, f"正在下载... ({downloaded}/{total_stocks})")
+                self._progress(pct, f"正在下载... ({downloaded}/{total_stocks})")
 
         proc.wait()
 
         if proc.returncode == 0 or proc.returncode is None:
-            self.signals.progress.emit(95, "正在初始化 Qlib 数据...")
-            self.signals.log_line.emit("[INFO] 数据下载完成，正在初始化 Qlib...")
+            self._progress(95, "正在初始化 Qlib 数据...")
+            self._log_line("[INFO] 数据下载完成，正在初始化 Qlib...")
 
             # 重新初始化 Qlib
             ok = init_qlib()
             if ok:
-                self.signals.progress.emit(100, "✅ 初始化完成")
-                self.signals.log_line.emit("[INFO] ✅ Qlib 初始化成功，可以开始量化选股")
-                self.signals.completed.emit(True, "数据下载和初始化成功")
+                self._progress(100, "✅ 初始化完成")
+                self._log_line("[INFO] ✅ Qlib 初始化成功，可以开始量化选股")
+                self._completed(True, "数据下载和初始化成功")
                 # 通知事件总线
                 try:
                     from core.event_bus import get_event_bus
                     get_event_bus().qlib_initialized.emit()
                     get_event_bus().qlib_data_downloaded.emit()
+                except RuntimeError:
+                    logger.debug(f"[QlibDownloadWorker] 事件总线对象已删除")
                 except Exception:
                     pass
             else:
-                self.signals.completed.emit(False, "数据下载完成但 Qlib 初始化失败，请检查数据完整性")
+                self._completed(False, "数据下载完成但 Qlib 初始化失败，请检查数据完整性")
         else:
             msg = f"采集器退出码：{proc.returncode}"
-            self.signals.log_line.emit(f"[ERROR] {msg}")
-            self.signals.completed.emit(False, msg)
+            self._log_line(f"[ERROR] {msg}")
+            self._completed(False, msg)
 
     def _fallback_download(self) -> None:
         """
@@ -171,26 +214,26 @@ class QlibDownloadWorker(QRunnable):
                 members = zf.namelist()
                 total = len(members)
 
-                self.signals.log_line.emit(
+                self._log_line(
                     f"[INFO] 解压 ZIP：{total} 个文件"
                 )
 
                 for i, name in enumerate(members, start=1):
                     if self._cancelled:
-                        self.signals.completed.emit(False, "用户取消")
+                        self._completed(False, "用户取消")
                         return
 
                     zf.extract(name, extract_to)
 
                     if i % 500 == 0 or i == total:
                         pct = int(78 + (i / total) * 15)
-                        self.signals.progress.emit(
+                        self._progress(
                             pct,
                             f"解压 ZIP... {i}/{total}"
                         )
 
                     if i % 1000 == 0:
-                        self.signals.log_line.emit(f"[ZIP] {i}/{total}")
+                        self._log_line(f"[ZIP] {i}/{total}")
 
         # ---------- TAR.GZ / TGZ ----------
         elif suffix.endswith((".tar.gz", ".tgz", ".tar")):
@@ -200,31 +243,31 @@ class QlibDownloadWorker(QRunnable):
                 members = tf.getmembers()
                 total = len(members)
 
-                self.signals.log_line.emit(
+                self._log_line(
                     f"[INFO] 解压 TAR：{total} 个文件"
                 )
 
                 for i, member in enumerate(members, start=1):
                     if self._cancelled:
-                        self.signals.completed.emit(False, "用户取消")
+                        self._completed(False, "用户取消")
                         return
 
                     tf.extract(member, extract_to)
 
                     if i % 500 == 0 or i == total:
                         pct = int(78 + (i / total) * 15)
-                        self.signals.progress.emit(
+                        self._progress(
                             pct,
                             f"解压 TAR... {i}/{total}"
                         )
 
                     if i % 1000 == 0:
-                        self.signals.log_line.emit(f"[TAR] {i}/{total}")
+                        self._log_line(f"[TAR] {i}/{total}")
 
         else:
             raise ValueError(f"不支持的压缩格式: {archive_path.name}")
 
-        self.signals.log_line.emit("[INFO] 解压完成")
+        self._log_line("[INFO] 解压完成")
 
     def _get_data_url(self, reg: str) -> List[str]:
         match reg.lower():
@@ -264,10 +307,10 @@ class QlibDownloadWorker(QRunnable):
         data_urls = self._get_data_url(reg)  # 返回列表 [url1, url2, ...]
         
         if not data_urls:
-            self.signals.completed.emit(False, f"没有找到{reg_name}数据集的下载链接")
+            self._completed(False, f"没有找到{reg_name}数据集的下载链接")
             return
         
-        self.signals.log_line.emit(f"[INFO] 共 {len(data_urls)} 个文件需要下载")
+        self._log_line(f"[INFO] 共 {len(data_urls)} 个文件需要下载")
         
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
@@ -279,34 +322,36 @@ class QlibDownloadWorker(QRunnable):
                 return
             
             if self._cancelled:
-                self.signals.completed.emit(False, "用户取消")
+                self._completed(False, "用户取消")
                 return
 
-            self.signals.log_line.emit("[INFO] 所有文件下载完成，正在解压...")
-            self.signals.progress.emit(78, "正在解压数据包（约 2-3 分钟）...")
+            self._log_line("[INFO] 所有文件下载完成，正在解压...")
+            self._progress(78, "正在解压数据包（约 2-3 分钟）...")
             
             #binance 独立逻辑
             if reg == "bt" :
                 from workers.qLib_bin_writer import BinanceData_2_QlibData
                 BinanceData_2_QlibData(input=tmpdir_path, ouput = str(FIXED_TARGET_DIR), archive_paths=all_archive_paths, freq="day", signals= self.signals)
-                self.signals.log_line.emit(f"[INFO] 已全部更新完成")
+                self._log_line(f"[INFO] 已全部更新完成")
 
-                self.signals.progress.emit(96, "重新初始化 Qlib...")
-                self.signals.log_line.emit("[INFO] 正在重新初始化 Qlib...")
+                self._progress(96, "重新初始化 Qlib...")
+                self._log_line("[INFO] 正在重新初始化 Qlib...")
 
                 ok = init_qlib()
                 if ok:
-                    self.signals.progress.emit(100, "✅ 下载完成")
-                    self.signals.log_line.emit(f"[INFO] ✅ {reg_name} Qlib 数据下载成功，可以开始量化选股")
-                    self.signals.completed.emit(True, f"{reg_name} Qlib 数据下载成功")
+                    self._progress(100, "✅ 下载完成")
+                    self._log_line(f"[INFO] ✅ {reg_name} Qlib 数据下载成功，可以开始量化选股")
+                    self._completed(True, f"{reg_name} Qlib 数据下载成功")
                     try:
                         from core.event_bus import get_event_bus
                         get_event_bus().qlib_initialized.emit()
                         get_event_bus().qlib_data_downloaded.emit()
+                    except RuntimeError:
+                        logger.debug(f"[QlibDownloadWorker] 事件总线对象已删除")
                     except Exception:
                         pass
                 else:
-                    self.signals.completed.emit(False, "数据解压完成但 Qlib 初始化失败，请检查目录结构")
+                    self._completed(False, "数据解压完成但 Qlib 初始化失败，请检查目录结构")
                 return 
 
             # 股票数据
@@ -317,13 +362,13 @@ class QlibDownloadWorker(QRunnable):
             # 解压所有文件
             try:
                 for archive_path in all_archive_paths:
-                    self.signals.log_line.emit(f"[INFO] 解压文件: {archive_path.name}")
+                    self._log_line(f"[INFO] 解压文件: {archive_path.name}")
                     self._extract_archive(archive_path, extract_tmp)
             except Exception as e:
-                self.signals.completed.emit(False, f"解压失败：{e}")
+                self._completed(False, f"解压失败：{e}")
                 return
 
-            self.signals.progress.emit(93, "检查解压结果...")
+            self._progress(93, "检查解压结果...")
 
             # 找到解压后含 features/ 的子目录
             DATA_ITEMS = ["features", "calendars", "instruments"]
@@ -337,17 +382,17 @@ class QlibDownloadWorker(QRunnable):
                 for sub in extract_tmp.iterdir():
                     if sub.is_dir() and (sub / "features").exists():
                         extracted_dir = sub
-                        self.signals.log_line.emit(f"[INFO] 找到解压目录：{sub.name}")
+                        self._log_line(f"[INFO] 找到解压目录：{sub.name}")
                         break
 
             if extracted_dir is None:
                 dirs = [p.name for p in extract_tmp.iterdir() if p.is_dir()]
-                self.signals.log_line.emit(f"[WARN] 未找到含 features/ 的目录，当前：{dirs}")
-                self.signals.completed.emit(False, "解压结构异常，未找到 features/ 目录")
+                self._log_line(f"[WARN] 未找到含 features/ 的目录，当前：{dirs}")
+                self._completed(False, "解压结构异常，未找到 features/ 目录")
                 return
 
             # 备份旧数据，将新数据的各子目录移入 FIXED_TARGET_DIR
-            self.signals.log_line.emit(f"[INFO] 正在将数据写入 {FIXED_TARGET_DIR}...")
+            self._log_line(f"[INFO] 正在将数据写入 {FIXED_TARGET_DIR}...")
             for item_name in DATA_ITEMS:
                 src = extracted_dir / item_name
                 dst = FIXED_TARGET_DIR / item_name
@@ -359,24 +404,26 @@ class QlibDownloadWorker(QRunnable):
                         shutil.rmtree(backup, ignore_errors=True)
                     dst.rename(backup)
                 shutil.move(str(src), str(dst))
-                self.signals.log_line.emit(f"[INFO] 已更新 {item_name}/")
+                self._log_line(f"[INFO] 已更新 {item_name}/")
 
-        self.signals.progress.emit(96, "重新初始化 Qlib...")
-        self.signals.log_line.emit("[INFO] 正在重新初始化 Qlib...")
+        self._progress(96, "重新初始化 Qlib...")
+        self._log_line("[INFO] 正在重新初始化 Qlib...")
 
         ok = init_qlib()
         if ok:
-            self.signals.progress.emit(100, "✅ 下载完成")
-            self.signals.log_line.emit(f"[INFO] ✅ {reg_name} Qlib 数据下载成功，可以开始量化选股")
-            self.signals.completed.emit(True, f"{reg_name} Qlib 数据下载成功")
+            self._progress(100, "✅ 下载完成")
+            self._log_line(f"[INFO] ✅ {reg_name} Qlib 数据下载成功，可以开始量化选股")
+            self._completed(True, f"{reg_name} Qlib 数据下载成功")
             try:
                 from core.event_bus import get_event_bus
                 get_event_bus().qlib_initialized.emit()
                 get_event_bus().qlib_data_downloaded.emit()
+            except RuntimeError:
+                logger.debug(f"[QlibDownloadWorker] 事件总线对象已删除")
             except Exception:
                 pass
         else:
-            self.signals.completed.emit(False, "数据解压完成但 Qlib 初始化失败，请检查目录结构")
+            self._completed(False, "数据解压完成但 Qlib 初始化失败，请检查目录结构")
 
     def _download_all_files(self, data_urls: List[str], tmpdir_path: Path, all_archive_paths: List[Path]) -> bool:
         """
@@ -403,9 +450,9 @@ class QlibDownloadWorker(QRunnable):
             archive_path = tmpdir_path / archive_name
             all_archive_paths.append(archive_path)
             
-            self.signals.log_line.emit(f"[INFO] 正在下载文件 {idx}/{total_files}")
-            self.signals.log_line.emit(f"[INFO] 下载地址：{url}")
-            self.signals.progress.emit(
+            self._log_line(f"[INFO] 正在下载文件 {idx}/{total_files}")
+            self._log_line(f"[INFO] 下载地址：{url}")
+            self._progress(
                 5 + int((idx-1) * 70 / total_files), 
                 f"正在下载{reg_name}数据集 ({idx}/{total_files})..."
             )
@@ -424,8 +471,8 @@ class QlibDownloadWorker(QRunnable):
         from core.app_state import get_state
         reg_name = get_state().reg_name
         
-        self.signals.log_line.emit("[INFO] 开始下载到临时目录...")
-        self.signals.log_line.emit(f"[CMD] curl --retry 3 --retry-delay 5 -L --progress-bar -o {archive_path} {url}") 
+        self._log_line("[INFO] 开始下载到临时目录...")
+        self._log_line(f"[CMD] curl --retry 3 --retry-delay 5 -L --progress-bar -o {archive_path} {url}") 
         # 使用重试选项
         # curl --retry 3 --retry-delay 5 -L -o output.zip "https://data.binance.vision/..."
         cmd_download = ["curl", "--retry", "3", "--retry-delay", "5", "-L", "--progress-bar", "-o", str(archive_path), url]
@@ -442,11 +489,11 @@ class QlibDownloadWorker(QRunnable):
             for line in iter(proc.stdout.readline, ""):
                 if self._cancelled:
                     proc.terminate()
-                    self.signals.completed.emit(False, "用户取消")
+                    self._completed(False, "用户取消")
                     return False
                 line = line.rstrip()
                 if line:
-                    self.signals.log_line.emit(line)
+                    self._log_line(line)
                     if "%" in line:
                         try:
                             pct_str = [s for s in line.split() if "%" in s][0].replace("%", "")
@@ -459,7 +506,7 @@ class QlibDownloadWorker(QRunnable):
                             progress = base_progress + (current_idx - 1) * file_portion + (file_pct * 0.01 * file_portion)
                             
                             progress_int = max(5, min(75, int(progress)))
-                            self.signals.progress.emit(
+                            self._progress(
                                 progress_int, 
                                 f"正在下载{reg_name}数据集 ({current_idx}/{total_files}) {file_pct:.1f}%..."
                             )
@@ -467,14 +514,14 @@ class QlibDownloadWorker(QRunnable):
                             pass
             proc.wait()
             if proc.returncode != 0:
-                self.signals.completed.emit(False, f"curl 下载失败（退出码 {proc.returncode}）")
+                self._completed(False, f"curl 下载失败（退出码 {proc.returncode}）")
                 return False
         except FileNotFoundError:
-            self.signals.log_line.emit("[INFO] curl 不可用，使用 Python urllib 下载...")
+            self._log_line("[INFO] curl 不可用，使用 Python urllib 下载...")
             try:
                 self._download_with_urllib_fallback(url, archive_path)
             except Exception as e:
-                self.signals.completed.emit(False, f"urllib下载失败：{e}")
+                self._completed(False, f"urllib下载失败：{e}")
                 return False
         
         return True
@@ -482,14 +529,14 @@ class QlibDownloadWorker(QRunnable):
     def _download_with_urllib_fallback(self, url: str, dest: str) -> None:
         """urllib fallback 下载"""
         import urllib.request
-        self.signals.log_line.emit("[INFO] urllib 下载中（无进度），请等待...")
+        self._log_line("[INFO] urllib 下载中（无进度），请等待...")
 
         def reporthook(count, block_size, total_size):
             if self._cancelled:
                 raise InterruptedError("用户取消")
             if total_size > 0:
                 pct = min(75, int(count * block_size / total_size * 70) + 5)
-                self.signals.progress.emit(pct, "下载中...")
+                self._progress(pct, "下载中...")
 
         urllib.request.urlretrieve(url, dest, reporthook=reporthook)
 
@@ -508,6 +555,47 @@ class QlibUpdateWorker(QRunnable):
         self._proc: Optional[subprocess.Popen] = None
         self.setAutoDelete(True)
 
+    def safe_emit_signal(self, signal_name: str, *args) -> bool:
+        """
+        安全发射信号，避免 RuntimeError: wrapped C/C++ object has been deleted
+        
+        参数:
+            signal_name: 信号名称，如 'progress', 'log_line', 'completed', 'error'
+            *args: 信号参数
+            
+        返回:
+            bool: 是否成功发射
+        """
+        try:
+            signal = getattr(self.signals, signal_name, None)
+            if signal is not None and hasattr(signal, 'emit'):
+                signal.emit(*args)
+                return True
+        except RuntimeError:
+            # PyQt对象已被删除
+            logger.debug(f"[QlibUpdateWorker] 信号 {signal_name} 发射失败：对象已删除")
+            return False
+        except Exception as e:
+            logger.debug(f"[QlibUpdateWorker] 信号 {signal_name} 发射失败：{e}")
+            return False
+        return False
+    
+    def _progress(self, pct: int, msg: str) -> None:
+        """使用安全方法更新进度"""
+        self.safe_emit_signal('progress', pct, msg)
+    
+    def _log_line(self, line: str) -> None:
+        """使用安全方法记录日志行"""
+        self.safe_emit_signal('log_line', line)
+    
+    def _completed(self, success: bool, msg: str) -> None:
+        """使用安全方法记录完成"""
+        self.safe_emit_signal('completed', success, msg)
+    
+    def _error(self, msg: str) -> None:
+        """使用安全方法记录错误"""
+        self.safe_emit_signal('error', msg)
+
     def cancel(self) -> None:
         self._cancelled = True
         if self._proc:
@@ -522,8 +610,8 @@ class QlibUpdateWorker(QRunnable):
             self._run_update()
         except Exception as e:
             #logger.exception(f"更新 Worker 异常：{e}")
-            self.signals.error.emit(str(e))
-            self.signals.completed.emit(False, str(e))
+            self._error(str(e))
+            self._completed(False, str(e))
 
     def _run_update(self) -> None:
         import tempfile
@@ -539,16 +627,16 @@ class QlibUpdateWorker(QRunnable):
         FIXED_TARGET_DIR.mkdir(parents=True, exist_ok=True)
 
         url = DATA_URL
-        self.signals.log_line.emit(f"[INFO] 下载 SunsetWolf {reg_name} Qlib 数据集...")
-        self.signals.log_line.emit(f"[INFO] 下载地址：{url}")
-        self.signals.log_line.emit(f"[INFO] 文件大小：约 {DATA_SIZE_MB} MB，请耐心等待...")
-        self.signals.progress.emit(5, f"正在下载{reg_name} Qlib 数据集（约 {DATA_SIZE_MB} MB）...")
+        self._log_line(f"[INFO] 下载 SunsetWolf {reg_name} Qlib 数据集...")
+        self._log_line(f"[INFO] 下载地址：{url}")
+        self._log_line(f"[INFO] 文件大小：约 {DATA_SIZE_MB} MB，请耐心等待...")
+        self._progress(5, f"正在下载{reg_name} Qlib 数据集（约 {DATA_SIZE_MB} MB）...")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = os.path.join(tmpdir, "qlib_data_us.zip")
 
             # 下载
-            self.signals.log_line.emit("[INFO] 开始下载到临时目录...")
+            self._log_line("[INFO] 开始下载到临时目录...")
             cmd_download = ["curl", "-L", "--progress-bar", "-o", zip_path, url]
 
             try:
@@ -563,38 +651,38 @@ class QlibUpdateWorker(QRunnable):
                 for line in iter(self._proc.stdout.readline, ""):
                     if self._cancelled:
                         self._proc.terminate()
-                        self.signals.completed.emit(False, "用户取消")
+                        self._completed(False, "用户取消")
                         return
                     line = line.rstrip()
                     if line:
-                        self.signals.log_line.emit(line)
+                        self._log_line(line)
                         if "%" in line:
                             try:
                                 pct_str = [s for s in line.split() if "%" in s][0].replace("%", "")
                                 pct = max(5, min(75, int(float(pct_str) * 0.70) + 5))
-                                self.signals.progress.emit(pct, f"正在下载{reg_name}数据集...")
+                                self._progress(pct, f"正在下载{reg_name}数据集...")
                             except Exception:
                                 pass
                 self._proc.wait()
                 if self._proc.returncode != 0:
-                    self.signals.completed.emit(False, f"curl 下载失败（退出码 {self._proc.returncode}）")
+                    self._completed(False, f"curl 下载失败（退出码 {self._proc.returncode}）")
                     return
             except FileNotFoundError:
-                self.signals.log_line.emit("[INFO] curl 不可用，使用 Python urllib 下载...")
+                self._log_line("[INFO] curl 不可用，使用 Python urllib 下载...")
                 self._download_with_urllib(url, zip_path)
 
             if self._cancelled:
-                self.signals.completed.emit(False, "用户取消")
+                self._completed(False, "用户取消")
                 return
 
-            self.signals.log_line.emit("[INFO] 下载完成，正在解压...")
-            self.signals.progress.emit(78, "正在解压数据包（约 2-3 分钟）...")
+            self._log_line("[INFO] 下载完成，正在解压...")
+            self._progress(78, "正在解压数据包（约 2-3 分钟）...")
 
             # 解压到临时子目录
             extract_tmp = Path(tmpdir) / "extracted"
             extract_tmp.mkdir()
             cmd_extract = ["unzip", "-o", zip_path, "-d", str(extract_tmp)]
-            self.signals.log_line.emit(f"[CMD] unzip ... -d {extract_tmp}")
+            self._log_line(f"[CMD] unzip ... -d {extract_tmp}")
 
             try:
                 self._proc = subprocess.Popen(
@@ -608,40 +696,40 @@ class QlibUpdateWorker(QRunnable):
                 for line in iter(self._proc.stdout.readline, ""):
                     if self._cancelled:
                         self._proc.terminate()
-                        self.signals.completed.emit(False, "用户取消")
+                        self._completed(False, "用户取消")
                         return
                     line = line.rstrip()
                     if line and "inflating" in line.lower():
-                        self.signals.log_line.emit(line)
+                        self._log_line(line)
                 self._proc.wait()
                 if self._proc.returncode != 0:
-                    self.signals.log_line.emit(f"[WARN] unzip 退出码 {self._proc.returncode}，尝试 Python zipfile...")
+                    self._log_line(f"[WARN] unzip 退出码 {self._proc.returncode}，尝试 Python zipfile...")
                     import zipfile
                     with zipfile.ZipFile(zip_path, "r") as zf:
                         zf.extractall(str(extract_tmp))
             except FileNotFoundError:
-                self.signals.log_line.emit("[INFO] unzip 不可用，使用 Python zipfile 解压...")
+                self._log_line("[INFO] unzip 不可用，使用 Python zipfile 解压...")
                 try:
                     import zipfile
                     with zipfile.ZipFile(zip_path, "r") as zf:
                         total_files = len(zf.namelist())
                         for i, name in enumerate(zf.namelist()):
                             if self._cancelled:
-                                self.signals.completed.emit(False, "用户取消")
+                                self._completed(False, "用户取消")
                                 return
                             zf.extract(name, str(extract_tmp))
                             if i % 500 == 0:
                                 pct = 78 + int(i / total_files * 15)
-                                self.signals.progress.emit(pct, f"解压中... {i}/{total_files}")
+                                self._progress(pct, f"解压中... {i}/{total_files}")
                 except Exception as e:
-                    self.signals.completed.emit(False, f"解压异常：{e}")
+                    self._completed(False, f"解压异常：{e}")
                     return
             except Exception as e:
-                self.signals.completed.emit(False, f"解压异常：{e}")
+                self._completed(False, f"解压异常：{e}")
                 return
 
-            self.signals.progress.emit(93, "检查解压结果...")
-            self.signals.log_line.emit("[INFO] 解压完成，检查目录结构...")
+            self._progress(93, "检查解压结果...")
+            self._log_line("[INFO] 解压完成，检查目录结构...")
 
             DATA_ITEMS = ["features", "calendars", "instruments"]
             extracted_dir = None
@@ -652,17 +740,17 @@ class QlibUpdateWorker(QRunnable):
                 for sub in extract_tmp.iterdir():
                     if sub.is_dir() and (sub / "features").exists():
                         extracted_dir = sub
-                        self.signals.log_line.emit(f"[INFO] 找到解压目录：{sub.name}")
+                        self._log_line(f"[INFO] 找到解压目录：{sub.name}")
                         break
 
             if extracted_dir is None:
                 dirs = [p.name for p in extract_tmp.iterdir() if p.is_dir()]
-                self.signals.log_line.emit(f"[WARN] 未找到含 features/ 的目录，当前：{dirs}")
-                self.signals.completed.emit(False, "解压结构异常，未找到 features/ 目录")
+                self._log_line(f"[WARN] 未找到含 features/ 的目录，当前：{dirs}")
+                self._completed(False, "解压结构异常，未找到 features/ 目录")
                 return
 
             # 将各子目录移入 FIXED_TARGET_DIR
-            self.signals.log_line.emit(f"[INFO] 正在将数据写入 {FIXED_TARGET_DIR}...")
+            self._log_line(f"[INFO] 正在将数据写入 {FIXED_TARGET_DIR}...")
             for item_name in DATA_ITEMS:
                 src = extracted_dir / item_name
                 dst = FIXED_TARGET_DIR / item_name
@@ -674,37 +762,39 @@ class QlibUpdateWorker(QRunnable):
                         shutil.rmtree(backup, ignore_errors=True)
                     dst.rename(backup)
                 shutil.move(str(src), str(dst))
-                self.signals.log_line.emit(f"[INFO] 已更新 {item_name}/")
+                self._log_line(f"[INFO] 已更新 {item_name}/")
 
-        self.signals.progress.emit(96, "重新初始化 Qlib...")
-        self.signals.log_line.emit("[INFO] 正在重新初始化 Qlib...")
+        self._progress(96, "重新初始化 Qlib...")
+        self._log_line("[INFO] 正在重新初始化 Qlib...")
 
         ok = init_qlib()
         if ok:
-            self.signals.progress.emit(100, "✅ 数据更新完成")
-            self.signals.log_line.emit(
+            self._progress(100, "✅ 数据更新完成")
+            self._log_line(
                 f"[INFO] ✅ {reg_name} Qlib 数据更新完成，现在可以使用完整的 Alpha158/360 量化模型"
             )
-            self.signals.completed.emit(True, f"{reg_name} Qlib 数据更新成功")
+            self._completed(True, f"{reg_name} Qlib 数据更新成功")
             try:
                 from core.event_bus import get_event_bus
                 get_event_bus().qlib_initialized.emit()
                 get_event_bus().qlib_data_downloaded.emit()
+            except RuntimeError:
+                logger.debug(f"[QlibUpdateWorker] 事件总线对象已删除")
             except Exception:
                 pass
         else:
-            self.signals.completed.emit(False, "数据解压完成但 Qlib 初始化失败，请检查目录结构")
+            self._completed(False, "数据解压完成但 Qlib 初始化失败，请检查目录结构")
 
     def _download_with_urllib(self, url: str, dest: str) -> None:
         """urllib fallback 下载"""
         import urllib.request
-        self.signals.log_line.emit("[INFO] urllib 下载中（无进度），请等待...")
+        self._log_line("[INFO] urllib 下载中（无进度），请等待...")
 
         def reporthook(count, block_size, total_size):
             if self._cancelled:
                 raise InterruptedError("用户取消")
             if total_size > 0:
                 pct = min(75, int(count * block_size / total_size * 70) + 5)
-                self.signals.progress.emit(pct, "下载中...")
+                self._progress(pct, "下载中...")
 
         urllib.request.urlretrieve(url, dest, reporthook=reporthook)

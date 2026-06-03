@@ -34,18 +34,59 @@ class AnalysisWorker(QRunnable):
         self.signals          = AnalysisSignals()
         self.setAutoDelete(True)
 
+    def safe_emit_signal(self, signal_name: str, *args) -> bool:
+        """
+        安全发射信号，避免 RuntimeError: wrapped C/C++ object has been deleted
+        
+        参数:
+            signal_name: 信号名称，如 'started', 'result', 'error', 'progress'
+            *args: 信号参数
+            
+        返回:
+            bool: 是否成功发射
+        """
+        try:
+            signal = getattr(self.signals, signal_name, None)
+            if signal is not None and hasattr(signal, 'emit'):
+                signal.emit(*args)
+                return True
+        except RuntimeError:
+            # PyQt对象已被删除
+            logger.debug(f"[AnalysisWorker] 信号 {signal_name} 发射失败：对象已删除")
+            return False
+        except Exception as e:
+            logger.debug(f"[AnalysisWorker] 信号 {signal_name} 发射失败：{e}")
+            return False
+        return False
+    
+    def _started(self, ticker: str) -> None:
+        """使用安全方法记录开始"""
+        self.safe_emit_signal('started', ticker)
+    
+    def _result(self, ticker: str, report) -> None:
+        """使用安全方法记录结果"""
+        self.safe_emit_signal('result', ticker, report)
+    
+    def _error(self, ticker: str, msg: str) -> None:
+        """使用安全方法记录错误"""
+        self.safe_emit_signal('error', ticker, msg)
+    
+    def _progress(self, ticker: str, pct: int, msg: str) -> None:
+        """使用安全方法更新进度"""
+        self.safe_emit_signal('progress', ticker, pct, msg)
+
     @pyqtSlot()
     def run(self) -> None:
         ticker = self.ticker
-        self.signals.started.emit(ticker)
+        self._started(ticker)
 
         try:
-            self.signals.progress.emit(ticker, 10, "初始化分析模块...")
+            self._progress(ticker, 10, "初始化分析模块...")
 
             from stock_analysis.stock_analyzer import StockAnalyzer
             analyzer = StockAnalyzer()
 
-            self.signals.progress.emit(ticker, 20, "并行获取 Alpha158 + K线 + 基本面 + 情绪...")
+            self._progress(ticker, 20, "并行获取 Alpha158 + K线 + 基本面 + 情绪...")
 
             report = analyzer.analyze(
                 ticker,
@@ -53,9 +94,9 @@ class AnalysisWorker(QRunnable):
                 price_period_days=self.price_period_days,
             )
 
-            self.signals.progress.emit(ticker, 95, "生成综合报告...")
-            self.signals.result.emit(ticker, report)
-            self.signals.progress.emit(ticker, 100, "分析完成")
+            self._progress(ticker, 95, "生成综合报告...")
+            self._result(ticker, report)
+            self._progress(ticker, 100, "分析完成")
 
             logger.info(
                 f"AnalysisWorker [{ticker}] 完成，"
@@ -64,4 +105,4 @@ class AnalysisWorker(QRunnable):
 
         except Exception as e:
             logger.error(f"AnalysisWorker [{ticker}] 异常：{e}")
-            self.signals.error.emit(ticker, str(e))
+            self._error(ticker, str(e))

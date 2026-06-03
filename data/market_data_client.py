@@ -145,7 +145,7 @@ def _fetch_via_yfinance_direct(
         if reg == "cn":
             ticker = normalize_cn_tickers(ticker)[0]
         t = yf.Ticker(ticker)
-        df = t.history(start=start_date, end=end_date, auto_adjust=True)
+        df = t.history(start=start_date, end=end_date, auto_adjust=False)
         if df is not None and not df.empty:
             df.columns = [c.lower() for c in df.columns]
             # 去掉时区信息，统一为 date-only DatetimeIndex

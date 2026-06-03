@@ -30,7 +30,7 @@ if str(project_root) not in sys.path:
 # 导入Qlib相关
 import qlib
 from qlib.data import D
-from core.qlibhelper import REG_CN, REG_US, REG_HK
+from core.qlibhelper import REG_CN, REG_US, REG_HK, REG_BT
 
 # 导入本地模块
 from qlib_duckdb.duckdb_connection import DuckDBConnection
@@ -94,6 +94,8 @@ class QlibToDuckDBExporter:
             return str(db_dir / "cn_data.duckdb")
         elif self.reg == "us":
             return str(db_dir / "us_data.duckdb")
+        elif self.reg == "bt":
+            return str(db_dir / "bt_data.duckdb")
         else:
             return str(db_dir / f"{self.reg}_data.duckdb")
     
@@ -301,8 +303,15 @@ class QlibToDuckDBExporter:
             
             logger.info(f"📊 准备导出 {len(all_symbols)} 个标的的特征数据")
             
-            # 定义要导出的特征
-            features = ['$open', '$close', '$low', '$high', '$volume']
+            # 定义要导出的特征（包含通用字段和 A 股专有字段）
+            features = [
+                # 通用字段
+                '$open', '$close', '$low', '$high', '$volume', '$factor',
+                # A 股专有字段
+                '$adjclose', '$amount', '$change', '$vwap',
+                # Crypto 特有字段
+                '$quote_volume', '$taker_buy_base', '$trade_count'
+            ]
             feature_mapping = {
                 '$open': 'open',
                 '$close': 'close',
@@ -323,6 +332,7 @@ class QlibToDuckDBExporter:
                 '$trade_count': 'trade_count',
                 #中国市场
                 '$adjclose': 'adjclose',
+                '$amount': 'amount',
             }
             
             conn = self._get_connection(read_only=False)
@@ -353,25 +363,65 @@ class QlibToDuckDBExporter:
                                 pbar.set_postfix_str(f"{symbol}: 无数据")
                                 continue
                             
-                            # 重命名列
-                            #df_feature = df_feature.rename(columns=feature_mapping)
+                            # QLib 存储的是原始价格（yfinance Close）！
+                            # factor = Adj Close / Close（从 yfinance 采集时计算）
+                            # 原始价格 = QLib close（直接使用，无需处理）
+                            # 复权后价格 = QLib close * factor
                             
-                            # 添加symbol列
-                            #df_feature['symbol'] = symbol
+                            # 确保 adjclose 列存在（复权后价格）
+                            if '$adjclose' not in df_feature.columns or df_feature['$adjclose'].isnull().all():
+                                if '$factor' in df_feature.columns and '$close' in df_feature.columns:
+                                    df_feature['$adjclose'] = df_feature['$close'] * df_feature['$factor']
+                                    logger.debug(f"{symbol}: Calculated adjclose = close * factor")
+                                else:
+                                    df_feature['$adjclose'] = df_feature['$close']
                             
-                            # 选择需要的列
-                            #cols_to_keep = ['symbol', 'datetime', 'open', 'high', 'low', 'close', 'volume']
-                            #df_feature = df_feature[cols_to_keep]
+                            # 字段对齐处理
+                            # 1. adjclose: 如果不存在，使用 close 作为 adjclose
+                            if '$adjclose' not in df_feature.columns or df_feature['$adjclose'].isnull().all():
+                                df_feature['$adjclose'] = df_feature['$close']
+                            
+                            # 2. change: 如果不存在或为空，使用 adjclose 计算
+                            if '$change' not in df_feature.columns or df_feature['$change'].isnull().all():
+                                # 计算 change = 当前 adjclose - 前一天 adjclose
+                                df_feature['$change'] = df_feature['$adjclose'].diff()
+                                # 第一条数据使用 close - open
+                                df_feature.loc[0, '$change'] = df_feature.loc[0, '$close'] - df_feature.loc[0, '$open']
+                            
+                            # 3. amount 和 vwap: 如果不存在，设置为 NULL
+                            if '$amount' not in df_feature.columns:
+                                df_feature['$amount'] = None
+                            if '$vwap' not in df_feature.columns:
+                                df_feature['$vwap'] = None
+                            
+                            # 4. body: 可计算指标，body = abs(close - open)
+                            if '$body' not in df_feature.columns or df_feature['$body'].isnull().all():
+                                df_feature['$body'] = (df_feature['$close'] - df_feature['$open']).abs()
+                            
+                            # 5. range: 可计算指标，range = high - low
+                            if '$range' not in df_feature.columns or df_feature['$range'].isnull().all():
+                                df_feature['$range'] = df_feature['$high'] - df_feature['$low']
+                            
+                            # 6. Crypto 特有字段：如果不存在，设置为 NULL
+                            if '$quote_volume' not in df_feature.columns:
+                                df_feature['$quote_volume'] = None
+                            if '$taker_buy_base' not in df_feature.columns:
+                                df_feature['$taker_buy_base'] = None
+                            if '$trade_count' not in df_feature.columns:
+                                df_feature['$trade_count'] = None
                             
                             # 插入数据
                             temp_table = f"temp_feature_{symbol.replace('.', '_')}"
                             conn.register(temp_table, df_feature)
                             
                             insert_sql = f"""
-                            INSERT OR REPLACE INTO {table_name} (symbol, datetime, open, high, low, close, volume)
+                            INSERT OR REPLACE INTO {table_name} (symbol, datetime, open, high, low, close, volume, factor, adjclose, amount, change, vwap, body, range, quote_volume, taker_buy_base, trade_count)
                             SELECT "instrument" as symbol, "datetime" as datetime, 
                                 "$open" as open, "$high" as high, "$low" as low, 
-                                "$close" as close, "$volume" as volume
+                                "$close" as close, "$volume" as volume, "$factor" as factor,
+                                "$adjclose" as adjclose, "$amount" as amount, "$change" as change, "$vwap" as vwap,
+                                "$body" as body, "$range" as range,
+                                "$quote_volume" as quote_volume, "$taker_buy_base" as taker_buy_base, "$trade_count" as trade_count
                             FROM {temp_table}
                             """
                             

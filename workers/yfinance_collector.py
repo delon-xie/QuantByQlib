@@ -28,10 +28,8 @@ from core.app_state import get_state
 QLIB_DATA_DIR = _find_data_dir()
 # yfinance 下载每批的股票数量（过大会超时）
 BATCH_SIZE = 50
-# 获取交易日历用的参考指数
-CALENDAR_REF_TICKER = "^GSPC"
 # 需要写入的字段（与现有 features/ 目录一致）
-FIELDS = ["open", "high", "low", "close", "volume", "factor"]
+FIELDS = ["open", "high", "low", "close", "volume", "factor", "oriant_factor", "adj close", "is_extreme"]
 
 
 class CollectorSignals(QObject):
@@ -56,7 +54,49 @@ class YFinanceCollectorWorker(QRunnable):
         self.start_date = start_date
         self.signals = CollectorSignals()
         self._cancelled = False
-
+        
+    def safe_emit_signal(self, signal_name: str, *args) -> bool:
+        """
+        安全发射信号，避免 RuntimeError: wrapped C/C++ object has been deleted
+        
+        参数:
+            signal_name: 信号名称，如 'log_line', 'progress', 'completed', 'error'
+            *args: 信号参数
+            
+        返回:
+            bool: 是否成功发射
+        """
+        try:
+            if not self.signals:
+                return False
+                
+            signal = getattr(self.signals, signal_name, None)
+            if signal and hasattr(signal, 'emit'):
+                signal.emit(*args)
+                return True
+        except RuntimeError:
+            # PyQt对象已被删除
+            return False
+        except Exception:
+            return False
+        return False
+    
+    def _log(self, msg: str) -> None:
+        """使用安全方法记录日志"""
+        self.safe_emit_signal('log_line', msg)
+    
+    def _progress(self, pct: int, msg: str) -> None:
+        """使用安全方法更新进度"""
+        self.safe_emit_signal('progress', pct, msg)
+    
+    def _error(self, msg: str) -> None:
+        """使用安全方法记录错误"""
+        self.safe_emit_signal('error', msg)
+    
+    def _completed(self, is_completed:bool, msg: str) -> None:
+        """使用安全方法记录完成"""
+        self.safe_emit_signal('completed', is_completed, msg)
+    
     def cancel(self) -> None:
         self._cancelled = True
 
@@ -64,10 +104,10 @@ class YFinanceCollectorWorker(QRunnable):
     def run(self) -> None:
         try:
             self._run_collect()
-            self.signals.log_line.emit("采集完成")
+            self._log("采集完成")
         except Exception as e:
-            self.signals.log_line.emit(f"yfinance 采集 Worker 异常：{e}")
-            self.signals.error.emit(str(e))
+            self._log(f"yfinance 采集 Worker 异常：{e}")
+            self._error(str(e))
         finally:
             # ✅ 延迟删除，确保信号已派发
             #QTimer.singleShot(0, self.deleteLater)
@@ -96,9 +136,10 @@ class YFinanceCollectorWorker(QRunnable):
         today = date.today()
         new_trading_days = self._fetch_trading_days(fetch_start, today)
 
+        # 基于日历文件判断是否需要采集新数据，TODO：需要根据批次内的所有股票漏采的交易日判断是否需要采集
         if not new_trading_days:
             self._log("[INFO] 数据已是最新，无需追加")
-            self.signals.completed.emit(True, "数据已是最新，无需采集")
+            self._completed(True, "数据已是最新，无需采集")
             return
 
         self._log(f"[INFO] 新增交易日：{new_trading_days[0]} ~ {new_trading_days[-1]}，共 {len(new_trading_days)} 天")
@@ -172,7 +213,7 @@ class YFinanceCollectorWorker(QRunnable):
             summary += f"，{len(failed_tickers)} 支真正失败（无历史数据且无法下载）"
             self._log(f"[WARN] 失败 ticker 列表：{failed_tickers}")
         self._log(f"[INFO] {summary}")
-        self.signals.completed.emit(True, summary)
+        self._completed(True, summary)
 
     # ── 日历处理 ─────────────────────────────────────────────
 
@@ -231,14 +272,14 @@ class YFinanceCollectorWorker(QRunnable):
                 )
 
             if df.empty:
-                self.signals.log_line.emit("获取空日历数据")
+                self._log(f"yf 下载：{tickers}失败==获取空日历数据:{start}-{end}")
                 return []
             
             trading_days = sorted([ts.date() for ts in df.index])
-            self.signals.log_line.emit(f"获取日历天数:{len(trading_days)}")
+            self._log(f"获取日历天数:{len(trading_days)}")
             return trading_days
         except Exception as e:
-            self.signals.log_line.emit(f"获取交易日历失败：{e}")
+            self._log(f"获取交易日历失败：{e}")
             
         return []
 
@@ -341,7 +382,7 @@ class YFinanceCollectorWorker(QRunnable):
                     threads=True,
                 )
         except Exception as e:
-            self.signals.log_line.emit(f"批量下载失败：{e}")
+            self._log(f"批量下载失败：{e}")
             return 0, tickers
 
         written = 0
@@ -364,6 +405,7 @@ class YFinanceCollectorWorker(QRunnable):
                     ticker_in_raw = ticker in raw.columns.get_level_values(0)
                     if ticker_in_raw:
                         df = raw[ticker].copy()
+                        # TODO：并行写入DuckDb，留存原始数据
                     else:
                         df = pd.DataFrame()
                 else:
@@ -384,9 +426,24 @@ class YFinanceCollectorWorker(QRunnable):
                     continue
 
                 # 计算 factor = Adj Close / Close
+                # 删除Close为NaN行
                 df = df.dropna(subset=["Close"])
+                if "factor" in df.columns:
+                    df["oriant_factor"] = df["factor"].copy()
+                else:
+                    df["oriant_factor"] = 1.0
                 df["factor"] = df["Adj Close"] / df["Close"]
-                df["factor"] = df["factor"].fillna(1.0).clip(0.01, 100.0)
+                df["factor"] = df["factor"].fillna(1.0)
+                
+                #df["is_extreme"] = 0  # 默认正常值
+                #df.loc[df["factor"] < 10e-6, "is_extreme"] = -1  # 低极端值
+                #df.loc[df["factor"] > 10e6, "is_extreme"] = 1    # 高极端值
+                
+                factors = df["factor"].values
+                is_extreme = np.full(len(factors), 0, dtype=np.int8)
+                is_extreme[factors < 10e-6] = -1
+                is_extreme[factors > 10e6] = 1
+                df["is_extreme"] = is_extreme
 
                 # 将日期 index 规范化为 date 对象
                 df.index = pd.to_datetime(df.index).normalize()
@@ -408,11 +465,11 @@ class YFinanceCollectorWorker(QRunnable):
                     else:
                         failed.append(ticker)
             except Exception as e:
-                self.signals.log_line.emit(f"{ticker} 写入失败：{e}")
+                self._log(f"{ticker} 写入失败：{e}")
                 failed.append(ticker)
 
         if skipped_delisted:
-            self.signals.log_line.emit(f"已退市/停牌跳过（有历史数据）：{skipped_delisted} 支")
+            self._log(f"已退市/停牌跳过（有历史数据）：{skipped_delisted} 支")
         return written, failed
 
     def _write_ticker_data(
@@ -550,6 +607,9 @@ class YFinanceCollectorWorker(QRunnable):
             "close":  "Close",
             "volume": "Volume",
             "factor": "factor",
+            "oriant_factor": "oriant_factor",
+            "adj close": "Adj Close",
+            "is_extreme": "is_extreme",
         }
         col = col_map.get(field)
         if col is None or col not in df.columns:
@@ -582,20 +642,12 @@ class YFinanceCollectorWorker(QRunnable):
                         new_lines.append(line)
                 inst_file.write_text("\n".join(new_lines), encoding="utf-8")
             except Exception as e:
-                self.signals.log_line.emit(f"更新 {inst_file.name} 失败：{e}")
+                self._log(f"更新 {inst_file.name} 失败：{e}")
 
-    # ── 辅助 ─────────────────────────────────────────────────
-
-    def _log(self, msg: str) -> None:
-
-        self.signals.log_line.emit(msg)
-
-    def _progress(self, pct: int, msg: str) -> None:
-        self.signals.progress.emit(pct, msg)
 
     def _cancel_exit(self) -> None:
         self._log("[INFO] 已取消")
-        self.signals.completed.emit(False, "用户取消")
+        self._completed(False, "用户取消")
 
 
 # ── 内置股票列表（备用，当 instruments 文件不存在时使用） ──────

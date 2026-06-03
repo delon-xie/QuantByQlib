@@ -449,7 +449,7 @@ class BacktestEngine:
                     start=start,
                     end=end,
                     progress=False,
-                    auto_adjust=True,
+                    auto_adjust=False,
                     threads=True,
                 )
             else:
@@ -464,7 +464,7 @@ class BacktestEngine:
                     start=start,
                     end=end,
                     progress=False,
-                    auto_adjust=True,
+                    auto_adjust=False,
                     threads=True,
                 )
                 
@@ -544,7 +544,7 @@ class BacktestEngine:
                     start=start, 
                     end=end,
                     progress=False, 
-                    auto_adjust=True, 
+                    auto_adjust=False, 
                     threads=True,
                 )
             else:
@@ -559,7 +559,7 @@ class BacktestEngine:
                     start=start, 
                     end=end,
                     progress=False, 
-                    auto_adjust=True, 
+                    auto_adjust=False, 
                     threads=True,
                 )
             

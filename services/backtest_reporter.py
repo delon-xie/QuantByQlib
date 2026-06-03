@@ -264,7 +264,7 @@ def _get_benchmark_metrics(ticker: str, start_date: str, end_date: str) -> dict:
                 start=start_date, 
                 end=end_date,
                 progress=False, 
-                auto_adjust=True, 
+                auto_adjust=False, 
                 threads=True,
             )
         else:
@@ -279,7 +279,7 @@ def _get_benchmark_metrics(ticker: str, start_date: str, end_date: str) -> dict:
                 start=start_date, 
                 end=end_date,
                 progress=False, 
-                auto_adjust=True, 
+                auto_adjust=False, 
                 threads=True,
             )
 

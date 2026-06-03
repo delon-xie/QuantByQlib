@@ -1,15 +1,27 @@
 ``` bash
-# 构建虚拟环境 3.10.20
-# ~/.pyenv/versions/3.10.20/bin/python -m venv .venv
+# 编辑 ~/.zshrc 确保 conda 掌控虚拟环境管理
+nano ~/.zshrc
+source ~/.zshrc
+
+conda init zsh  # 如果你是 zsh
+# 或
+conda init bash  # 如果你是 bash
+
+conda create -n .qlibvenv python=3.11
+
+# 构建虚拟环境 3.11.13
+# ~/.pyenv/versions/3.11.13/bin/python -m venv .qlibvenv
 # 激活虚拟环境
-# source .venv/bin/activate
+# source .qlibvenv/bin/activate
 
 # Torch 环境2.6.0 特殊需求
 conda deactivate
-conda activate .venv
+conda activate .qlibvenv
 
 # 验证版本
-python --V
+python -V
+
+which python
 
 # 2. 先装 PyTorch（conda 渠道，Intel Mac 唯一途径）
 conda install "pytorch>=2.6.0" "torchvision" "torchaudio" "numpy>=2.4.6" -c pytorch -c conda-forge
@@ -20,6 +32,9 @@ pip install -r requirements_base.txt
 
 # 运行 QuantByQLib
 python main.py 
+
+# 数据导出到duckdb
+python ./qlib_duckdb/export_qlib_to_duckdb.py
 
 # 安装依赖
 # 基本安装

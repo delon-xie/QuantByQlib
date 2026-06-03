@@ -8,7 +8,7 @@ from __future__ import annotations
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTableWidget, QTableWidgetItem,
-    QSplitter, QHeaderView, QLineEdit, QComboBox
+    QSplitter, QHeaderView, QLineEdit, QComboBox, QMessageBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
@@ -234,7 +234,9 @@ class ResultsPage(QWidget):
 
     def _on_export(self) -> None:
         if not self._results:
+            QMessageBox.warning(self, "无数据", "当前没有选股结果，无法导出。")
             return
+        
         from PyQt6.QtWidgets import QFileDialog
         import csv
         path, _ = QFileDialog.getSaveFileName(
@@ -242,12 +244,19 @@ class ResultsPage(QWidget):
         )
         if not path:
             return
+        
+        # 导出所有字段（与 stock_screener.py 返回的数据结构一致）
+        fieldnames = [
+            "ticker", "score", "signal", "change_pct",
+            "strategy", "strategy_key", "model", "universe_size"
+        ]
+        
         with open(path, "w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(
-                f, fieldnames=["ticker", "score", "signal", "change_pct"]
-            )
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(self._results)
+        
+        QMessageBox.information(self, "导出成功", f"已导出 {len(self._results)} 条选股结果到:\n{path}")
 
     def _on_generate_signals(self) -> None:
         from core.event_bus import get_event_bus

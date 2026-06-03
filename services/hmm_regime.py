@@ -148,7 +148,7 @@ def _fetch_spy_data(anchor: date, lookback_years: int) -> Optional[pd.DataFrame]
                 start=start.isoformat(), 
                 end=anchor.isoformat(),
                 progress=False, 
-                auto_adjust=True,
+                auto_adjust=False,
                 threads=True,
             )
         else:
@@ -165,7 +165,7 @@ def _fetch_spy_data(anchor: date, lookback_years: int) -> Optional[pd.DataFrame]
                 start=start.isoformat(), 
                 end=anchor.isoformat(),
                 progress=False, 
-                auto_adjust=True,
+                auto_adjust=False,
                 threads=True,
             )
         

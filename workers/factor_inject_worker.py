@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QRunnable, QObject, pyqtSignal
+from loguru import logger
 
 
 class FactorInjectSignals(QObject):
@@ -34,11 +35,46 @@ class FactorInjectWorker(QRunnable):
         self.signals   = FactorInjectSignals()
         self.setAutoDelete(True)
 
-    def run(self) -> None:
-        from loguru import logger
+    def safe_emit_signal(self, signal_name: str, *args) -> bool:
+        """
+        安全发射信号，避免 RuntimeError: wrapped C/C++ object has been deleted
+        
+        参数:
+            signal_name: 信号名称，如 'progress', 'completed', 'error'
+            *args: 信号参数
+            
+        返回:
+            bool: 是否成功发射
+        """
+        try:
+            signal = getattr(self.signals, signal_name, None)
+            if signal is not None and hasattr(signal, 'emit'):
+                signal.emit(*args)
+                return True
+        except RuntimeError:
+            # PyQt对象已被删除
+            logger.debug(f"[FactorInjectWorker] 信号 {signal_name} 发射失败：对象已删除")
+            return False
+        except Exception as e:
+            logger.debug(f"[FactorInjectWorker] 信号 {signal_name} 发射失败：{e}")
+            return False
+        return False
+    
+    def _progress(self, pct: int, msg: str) -> None:
+        """使用安全方法更新进度"""
+        self.safe_emit_signal('progress', pct, msg)
+    
+    def _completed(self, factors: list) -> None:
+        """使用安全方法记录完成"""
+        self.safe_emit_signal('completed', factors)
+    
+    def _error(self, msg: str) -> None:
+        """使用安全方法记录错误"""
+        self.safe_emit_signal('error', msg)
 
+    def run(self) -> None:
         def cb(pct: int, msg: str) -> None:
-            self.signals.progress.emit(pct, msg)
+            self._progress(pct, msg)
 
         try:
             cb(2, "初始化 Qlib...")
@@ -69,13 +105,14 @@ class FactorInjectWorker(QRunnable):
             try:
                 from core.event_bus import get_event_bus
                 get_event_bus().rdagent_factors_injected.emit(valid_exprs)
+            except RuntimeError:
+                logger.debug(f"[FactorInjectWorker] 事件总线对象已删除")
             except Exception as e:
                 logger.debug(f"[因子注入] EventBus 广播失败（忽略）：{e}")
 
             cb(100, f"完成：{len(valid_exprs)} 个因子通过验证")
-            self.signals.completed.emit(valid_exprs)   # list[dict]
+            self._completed(valid_exprs)   # list[dict]
 
         except Exception as e:
-            from loguru import logger as _log
-            _log.exception(f"[因子注入] Worker 异常：{e}")
+            logger.exception(f"[因子注入] Worker 异常：{e}")
             self.signals.error.emit(str(e))

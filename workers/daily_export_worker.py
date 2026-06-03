@@ -65,6 +65,44 @@ class DailyExportWorker(QRunnable):
         self.signals        = DailyExportSignals()
         self.setAutoDelete(True)
 
+    def safe_emit_signal(self, signal_name: str, *args) -> bool:
+        """
+        安全发射信号，避免 RuntimeError: wrapped C/C++ object has been deleted
+        
+        参数:
+            signal_name: 信号名称，如 'progress', 'completed', 'error'
+            *args: 信号参数
+            
+        返回:
+            bool: 是否成功发射
+        """
+        try:
+            signal = getattr(self.signals, signal_name, None)
+            if signal is not None and hasattr(signal, 'emit'):
+                signal.emit(*args)
+                return True
+        except RuntimeError:
+            # PyQt对象已被删除
+            logger.debug(f"[DailyExportWorker] 信号 {signal_name} 发射失败：对象已删除")
+            return False
+        except Exception as e:
+            logger.debug(f"[DailyExportWorker] 信号 {signal_name} 发射失败：{e}")
+            return False
+        return False
+    
+    def _progress(self, pct: int, msg: str) -> None:
+        """使用安全方法更新进度"""
+        logger.info(f"[DailyExport] {pct}% {msg}")
+        self.safe_emit_signal('progress', pct, msg)
+    
+    def _completed(self, root: str) -> None:
+        """使用安全方法记录完成"""
+        self.safe_emit_signal('completed', root)
+    
+    def _error(self, msg: str) -> None:
+        """使用安全方法记录错误"""
+        self.safe_emit_signal('error', msg)
+
     @pyqtSlot()
     def run(self) -> None:
         from services.output_paths import get_root, cleanup_old_files
@@ -76,7 +114,9 @@ class DailyExportWorker(QRunnable):
             tickers=self.tickers,
         )
 
-        self._emit(2, "初始化输出目录...")
+        self._emit = self._progress  # 兼容旧代码
+        
+        self._progress(2, "初始化输出目录...")
         root = get_root()
 
         # ── F1：K 线图表 ──────────────────────────────────────────────────
@@ -84,7 +124,7 @@ class DailyExportWorker(QRunnable):
         chart_errors: list[str] = []
 
         if self.run_charts and self.tickers:
-            self._emit(5, f"F1 生成 K 线图表（{len(self.tickers)} 支股票）...")
+            self._progress(5, f"F1 生成 K 线图表（{len(self.tickers)} 支股票）...")
             chart_files, chart_errors = self._run_charts(d, root)
             if chart_errors:
                 for e in chart_errors:
@@ -195,13 +235,9 @@ class DailyExportWorker(QRunnable):
             logger.warning(f"[DailyExport] 清理旧文件失败：{e}")
 
         self._emit(100, f"全部完成 → {root}")
-        self.signals.completed.emit(str(root))
+        self._completed(str(root))
 
     # ── 内部方法 ──────────────────────────────────────────────────────────
-
-    def _emit(self, pct: int, msg: str) -> None:
-        logger.info(f"[DailyExport] {pct}% {msg}")
-        self.signals.progress.emit(pct, msg)
 
     def _detect_run_type(self) -> str:
         d = self.trade_date
@@ -296,7 +332,7 @@ class DailyExportWorker(QRunnable):
                             if reg == "bt":
                                 df = binance_download(
                                     ticker, progress=False, 
-                                    auto_adjust=True,
+                                    auto_adjust=False,
                                     period=params["period"], 
                                     interval=params["interval"],
                                     threads=True,
@@ -310,7 +346,7 @@ class DailyExportWorker(QRunnable):
                                 # tickers_str = " ".join(tickers)
                                 df = yf.download(
                                     ticker, progress=False, 
-                                    auto_adjust=True,
+                                    auto_adjust=False,
                                     period=params["period"], 
                                     interval=params["interval"],
                                     threads=True,
@@ -462,7 +498,7 @@ class DailyExportWorker(QRunnable):
                             ticker, period="252d", 
                             interval="1d",
                             progress=False, 
-                            auto_adjust=True,
+                            auto_adjust=False,
                             threads=True,
                         )
                     else:
@@ -476,7 +512,7 @@ class DailyExportWorker(QRunnable):
                             ticker, period="252d", 
                             interval="1d",
                             progress=False, 
-                            auto_adjust=True,
+                            auto_adjust=False,
                             threads=True,
                         )
 

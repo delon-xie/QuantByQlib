@@ -29,6 +29,43 @@ class LLMReportWorker(QRunnable):
         self.signals = LLMReportSignals()
         self.setAutoDelete(True)
 
+    def safe_emit_signal(self, signal_name: str, *args) -> bool:
+        """
+        安全发射信号，避免 RuntimeError: wrapped C/C++ object has been deleted
+        
+        参数:
+            signal_name: 信号名称，如 'chunk', 'finished', 'error'
+            *args: 信号参数
+            
+        返回:
+            bool: 是否成功发射
+        """
+        try:
+            signal = getattr(self.signals, signal_name, None)
+            if signal is not None and hasattr(signal, 'emit'):
+                signal.emit(*args)
+                return True
+        except RuntimeError:
+            # PyQt对象已被删除
+            logger.debug(f"[LLMReportWorker] 信号 {signal_name} 发射失败：对象已删除")
+            return False
+        except Exception as e:
+            logger.debug(f"[LLMReportWorker] 信号 {signal_name} 发射失败：{e}")
+            return False
+        return False
+    
+    def _chunk(self, ticker: str, text: str) -> None:
+        """使用安全方法推送文本块"""
+        self.safe_emit_signal('chunk', ticker, text)
+    
+    def _finished(self, ticker: str, full_text: str) -> None:
+        """使用安全方法记录完成"""
+        self.safe_emit_signal('finished', ticker, full_text)
+    
+    def _error(self, ticker: str, msg: str) -> None:
+        """使用安全方法记录错误"""
+        self.safe_emit_signal('error', ticker, msg)
+
     @pyqtSlot()
     def run(self) -> None:
         ticker = self._report.ticker
@@ -39,7 +76,7 @@ class LLMReportWorker(QRunnable):
             full_text = ""
             for chunk in generator.generate_stream(self._report):
                 full_text += chunk
-                self.signals.chunk.emit(ticker, chunk)
+                self._chunk(ticker, chunk)
 
             # 保存 MD 文件
             if full_text:
@@ -49,7 +86,7 @@ class LLMReportWorker(QRunnable):
                 except Exception as e:
                     logger.debug(f"[LLMReportWorker] MD 保存失败 {ticker}：{e}")
 
-            self.signals.finished.emit(ticker, full_text)
+            self._finished(ticker, full_text)
 
         except Exception as e:
             logger.error(f"[LLMReportWorker] {ticker} 最终失败：{e}")
@@ -62,4 +99,4 @@ class LLMReportWorker(QRunnable):
                 msg = "API 账户额度不足，请充值后再试。"
             else:
                 msg = f"生成失败：{err_str}"
-            self.signals.error.emit(ticker, msg)
+            self._error(ticker, msg)

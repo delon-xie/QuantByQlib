@@ -71,7 +71,7 @@ class _FetchWorker(QRunnable):
             df = binance_download(
                 self.ticker, 
                 progress=False, 
-                auto_adjust=True, 
+                auto_adjust=False, 
                 threads=True, 
                 **params
             )
@@ -87,7 +87,7 @@ class _FetchWorker(QRunnable):
             df = yf.download(
                 ticker, 
                 progress=False, 
-                auto_adjust=True, 
+                auto_adjust=False, 
                 threads=True, 
                 **params
             )

@@ -247,7 +247,7 @@ class SignalValidator:
                         start=earliest.isoformat(),
                         end=latest.isoformat(),
                         progress=False,
-                        auto_adjust=True,
+                        auto_adjust=False,
                         threads=True,
                     )
                 else:
@@ -262,7 +262,7 @@ class SignalValidator:
                         start=earliest.isoformat(),
                         end=latest.isoformat(),
                         progress=False,
-                        auto_adjust=True,
+                        auto_adjust=False,
                         threads=True,
                     )
                 

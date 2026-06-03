@@ -33,6 +33,7 @@ MARKETS = [
 
 # ---------- 市场规则 ----------
 MARKET_RULES: dict[str, Pattern] = {
+    #sh === code.startswith(('6', '688')):  # 6开头和688开头的为上交所
     "cn": re.compile(r"^(sh|sz|bj)\d{6}$"),           # A 股
     "hk": re.compile(r"^\d{4,5}\.HK$"),               # 港股
     "tw": re.compile(r"^\d{4}\.TW$"),                 # 台股

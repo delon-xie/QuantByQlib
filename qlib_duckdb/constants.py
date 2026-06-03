@@ -40,6 +40,16 @@ CREATE TABLE IF NOT EXISTS {table_name} (
     low         DOUBLE,
     close       DOUBLE,
     volume      DOUBLE,
+    factor      DOUBLE,
+    adjclose    DOUBLE,
+    change      DOUBLE,
+    amount      DOUBLE,
+    vwap        DOUBLE,
+    body        DOUBLE,
+    range       DOUBLE,
+    quote_volume       DOUBLE,
+    taker_buy_base     DOUBLE,
+    trade_count        DOUBLE,
     PRIMARY KEY (symbol, datetime)
 )
 """

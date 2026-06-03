@@ -31,6 +31,47 @@ class PortfolioAIWorker(QRunnable):
         self.signals  = PortfolioAISignals()
         self.setAutoDelete(True)
 
+    def safe_emit_signal(self, signal_name: str, *args) -> bool:
+        """
+        安全发射信号，避免 RuntimeError: wrapped C/C++ object has been deleted
+        
+        参数:
+            signal_name: 信号名称，如 'progress', 'one_done', 'all_done', 'error'
+            *args: 信号参数
+            
+        返回:
+            bool: 是否成功发射
+        """
+        try:
+            signal = getattr(self.signals, signal_name, None)
+            if signal is not None and hasattr(signal, 'emit'):
+                signal.emit(*args)
+                return True
+        except RuntimeError:
+            # PyQt对象已被删除
+            logger.debug(f"[PortfolioAIWorker] 信号 {signal_name} 发射失败：对象已删除")
+            return False
+        except Exception as e:
+            logger.debug(f"[PortfolioAIWorker] 信号 {signal_name} 发射失败：{e}")
+            return False
+        return False
+    
+    def _progress(self, idx: int, total: int, ticker: str, msg: str) -> None:
+        """使用安全方法更新进度"""
+        self.safe_emit_signal('progress', idx, total, ticker, msg)
+    
+    def _one_done(self, ticker: str, path: str) -> None:
+        """使用安全方法记录单支完成"""
+        self.safe_emit_signal('one_done', ticker, path)
+    
+    def _all_done(self, success: list, failed: list, dir: str) -> None:
+        """使用安全方法记录全部完成"""
+        self.safe_emit_signal('all_done', success, failed, dir)
+    
+    def _error(self, ticker: str, msg: str) -> None:
+        """使用安全方法记录错误"""
+        self.safe_emit_signal('error', ticker, msg)
+
     @pyqtSlot()
     def run(self) -> None:
         total      = len(self._tickers)
@@ -39,17 +80,17 @@ class PortfolioAIWorker(QRunnable):
         reports_dir = ""
 
         for idx, ticker in enumerate(self._tickers, start=1):
-            self.signals.progress.emit(idx, total, ticker, f"正在分析 {ticker}…")
+            self._progress(idx, total, ticker, f"正在分析 {ticker}…")
 
             try:
                 # ── 1. 基本面 + 技术面分析 ──────────────────────────
                 from stock_analysis.stock_analyzer import StockAnalyzer
-                self.signals.progress.emit(idx, total, ticker, f"[{ticker}] 获取基本面与技术数据…")
+                self._progress(idx, total, ticker, f"[{ticker}] 获取基本面与技术数据…")
                 report = StockAnalyzer().analyze(ticker)
 
                 # ── 2. LLM 流式生成报告（收集完整文本）─────────────
                 from stock_analysis.llm_report_generator import LLMReportGenerator
-                self.signals.progress.emit(idx, total, ticker, f"[{ticker}] AI 生成报告…")
+                self._progress(idx, total, ticker, f"[{ticker}] AI 生成报告…")
                 generator  = LLMReportGenerator()
                 full_text  = ""
                 for chunk in generator.generate_stream(report):
@@ -65,12 +106,12 @@ class PortfolioAIWorker(QRunnable):
                     reports_dir = str(Path(saved_path).parent.parent)
 
                 success.append(ticker)
-                self.signals.one_done.emit(ticker, saved_path or "")
+                self._one_done(ticker, saved_path or "")
                 logger.info(f"[PortfolioAIWorker] {ticker} AI 报告生成完成：{saved_path}")
 
             except Exception as e:
                 logger.error(f"[PortfolioAIWorker] {ticker} 失败：{e}")
                 failed.append(ticker)
-                self.signals.error.emit(ticker, str(e))
+                self._error(ticker, str(e))
 
-        self.signals.all_done.emit(success, failed, reports_dir)
+        self._all_done(success, failed, reports_dir)

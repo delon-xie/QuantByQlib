@@ -29,6 +29,43 @@ class BacktestWorker(QRunnable):
         self.signals = BacktestSignals()
         self.setAutoDelete(True)
 
+    def safe_emit_signal(self, signal_name: str, *args) -> bool:
+        """
+        安全发射信号，避免 RuntimeError: wrapped C/C++ object has been deleted
+        
+        参数:
+            signal_name: 信号名称，如 'progress', 'completed', 'failed'
+            *args: 信号参数
+            
+        返回:
+            bool: 是否成功发射
+        """
+        try:
+            signal = getattr(self.signals, signal_name, None)
+            if signal is not None and hasattr(signal, 'emit'):
+                signal.emit(*args)
+                return True
+        except RuntimeError:
+            # PyQt对象已被删除
+            logger.debug(f"[BacktestWorker] 信号 {signal_name} 发射失败：对象已删除")
+            return False
+        except Exception as e:
+            logger.debug(f"[BacktestWorker] 信号 {signal_name} 发射失败：{e}")
+            return False
+        return False
+    
+    def _progress(self, pct: int, msg: str) -> None:
+        """使用安全方法更新进度"""
+        self.safe_emit_signal('progress', pct, msg)
+    
+    def _completed(self, report) -> None:
+        """使用安全方法记录完成"""
+        self.safe_emit_signal('completed', report)
+    
+    def _failed(self, msg: str) -> None:
+        """使用安全方法记录失败"""
+        self.safe_emit_signal('failed', msg)
+
     @pyqtSlot()
     def run(self) -> None:
         logger.info(
@@ -37,21 +74,23 @@ class BacktestWorker(QRunnable):
         )
 
         def progress_cb(pct: int, msg: str):
-            self.signals.progress.emit(pct, msg)
+            self._progress(pct, msg)
 
         try:
             from backtesting.backtest_engine import BacktestEngine
             engine = BacktestEngine()
             report = engine.run(self.config, progress_cb=progress_cb)
 
-            self.signals.completed.emit(report)
+            self._completed(report)
 
             # 通知事件总线
             try:
                 from core.event_bus import get_event_bus
                 get_event_bus().backtest_completed.emit(report)
-            except Exception:
-                pass
+            except RuntimeError:
+                logger.debug(f"[BacktestWorker] 事件总线对象已删除")
+            except Exception as e:
+                logger.debug(f"[BacktestWorker] 事件总线发射失败：{e}")
 
             logger.info(
                 f"BacktestWorker 完成：年化={report.metrics.annual_return}，"
@@ -60,7 +99,7 @@ class BacktestWorker(QRunnable):
 
         except Exception as e:
             logger.error(f"BacktestWorker 异常：{e}")
-            self.signals.failed.emit(str(e))
+            self._failed(str(e))
             try:
                 from core.event_bus import get_event_bus
                 get_event_bus().backtest_failed.emit(str(e))

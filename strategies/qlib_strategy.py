@@ -15,6 +15,9 @@ import pandas as pd
 from loguru import logger
 
 from strategies.base_strategy import BaseStrategy, StrategyResult
+from strategies.screening.ma10_screening import MA10TurnUpScreenStrategy  # 新增传统策略
+from strategies.screening.golden_cross_screening import GoldenCrossMAStrategy
+from strategies.screening.early_trend_screening import EarlyTrendFormationStrategy
 
 from core.model_helper import get_model
 from pathlib import Path
@@ -265,7 +268,7 @@ def download_or_get_local_data(chunk, cb, progress_info=""):
                 chunk,
                 period="3mo",
                 progress=False,
-                auto_adjust=True,
+                auto_adjust=False,
                 group_by="ticker",
                 threads=True,
             )
@@ -280,7 +283,7 @@ def download_or_get_local_data(chunk, cb, progress_info=""):
                 chunk,
                 period="3mo",
                 progress=False,
-                auto_adjust=True,
+                auto_adjust=False,
                 group_by="ticker",
                 threads=True,
             )
@@ -1530,6 +1533,99 @@ class PyTorchFullMarketStrategy(BaseStrategy):
             model_factory, universe, self.topk, progress_cb,
         )
 
+from strategies.screening.ma10_screening import MA10TurnUpScreenStrategy
+
+# 创建不同配置的策略
+def MA10_STRICT(**kwargs):
+    """周线严格模式MA10策略"""
+    return MA10TurnUpScreenStrategy(topk=20, turn_up_mode="strict", freq="day")
+
+def MA10_RELAXED(**kwargs):
+    """周线放宽模式MA10策略"""
+    return MA10TurnUpScreenStrategy(topk=20, turn_up_mode="relaxed", freq="day")
+
+def MA10_TREND(**kwargs):
+    """周线趋势模式MA10策略"""
+    return MA10TurnUpScreenStrategy(topk=20, turn_up_mode="trend", freq="day")
+
+def MA10_STRICT_WEEK(**kwargs):
+    """周线严格模式MA10策略"""
+    return MA10TurnUpScreenStrategy(topk=20, turn_up_mode="strict", freq="week")
+
+def MA10_RELAXED_WEEK(**kwargs):
+    """周线放宽模式MA10策略"""
+    return MA10TurnUpScreenStrategy(topk=20, turn_up_mode="relaxed", freq="week")
+
+def MA10_TREND_WEEK(**kwargs):
+    """周线趋势模式MA10策略"""
+    return MA10TurnUpScreenStrategy(topk=20, turn_up_mode="trend", freq="week")
+def create_golden_cross_510_day(**kwargs):
+    """5-10日线金叉策略"""
+    return GoldenCrossMAStrategy(
+        topk=20,
+        golden_cross_type="510",
+        max_cross_days=10,
+        require_volume_confirmation=True,
+        min_price_above_ma5=True,
+        freq="day"
+    )
+
+def create_golden_cross_1020_day(**kwargs):
+    """10-20日线金叉策略"""
+    return GoldenCrossMAStrategy(
+        topk=20,
+        golden_cross_type="1020",
+        max_cross_days=10,
+        freq="day"
+    )
+
+def create_golden_cross_510_week(**kwargs):
+    """5-10日线金叉策略"""
+    return GoldenCrossMAStrategy(
+        topk=20,
+        golden_cross_type="510",
+        max_cross_days=10,
+        require_volume_confirmation=True,
+        min_price_above_ma5=True,
+        freq="week"
+    )
+
+def create_golden_cross_1020_week(**kwargs):
+    """10-20日线金叉策略"""
+    return GoldenCrossMAStrategy(
+        topk=20,
+        golden_cross_type="1020",
+        max_cross_days=10,
+        freq="week"
+    )
+
+def create_early_trend_day(**kwargs):
+    """日线趋势早期识别策略"""
+    return EarlyTrendFormationStrategy(
+        topk=20,
+        max_convergence_days=20,
+        min_price_distance_to_resistance=0.05,
+        volume_increase_ratio=1.2,
+        require_small_slope=True,
+        max_slope=0.02,
+        freq="day",
+        use_macd_confirmation=True,
+        use_bollinger_squeeze=True
+    )
+
+def create_early_trend_week(**kwargs):
+    """日线趋势早期识别策略"""
+    return EarlyTrendFormationStrategy(
+        topk=20,
+        max_convergence_days=20,
+        min_price_distance_to_resistance=0.05,
+        volume_increase_ratio=1.2,
+        require_small_slope=True,
+        max_slope=0.02,
+        freq="week",
+        use_macd_confirmation=True,
+        use_bollinger_squeeze=True
+    )
 
 # ── 策略注册表 ────────────────────────────────────────────────
 
@@ -1539,6 +1635,22 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "deep_learning":       DeepLearningStrategy,
     "intraday_profit":     IntradayProfitStrategy,
     "pytorch_full_market": PyTorchFullMarketStrategy,
+    
+    # 新增传统策略
+    "ma10_turnup":         MA10TurnUpScreenStrategy,  # 关键：key必须一致
+    "ma10_strict":         MA10_STRICT,
+    "ma10_relaxed":        MA10_RELAXED, # ma10_turnup
+    "ma10_trend":          MA10_TREND,
+    
+    "ma10_strict_week":    MA10_STRICT_WEEK,
+    "ma10_relaxed_week":   MA10_RELAXED_WEEK,
+    "ma10_trend_week":     MA10_TREND_WEEK,
+    "golden_cross_510_day":    create_golden_cross_510_day,
+    "golden_cross_1020_day":   create_golden_cross_1020_day,
+    "golden_cross_510_week": create_golden_cross_510_week,
+    "golden_cross_1020_week": create_golden_cross_1020_week,
+    "early_trend_day": create_early_trend_day,
+    "early_trend_week": create_early_trend_week,
 }
 
 

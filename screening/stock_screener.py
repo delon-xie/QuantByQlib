@@ -211,7 +211,7 @@ class StockScreener:
                 df = binance_download(
                     symbols,
                     period="2d",
-                    auto_adjust=True,
+                    auto_adjust=False,
                     progress=False,
                     threads=True,
                     group_by="ticker",
@@ -226,7 +226,7 @@ class StockScreener:
                 df = yf.download(
                     symbols,
                     period="2d",
-                    auto_adjust=True,
+                    auto_adjust=False,
                     progress=False,
                     threads=True,
                     group_by="ticker",

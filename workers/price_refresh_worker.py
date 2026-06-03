@@ -22,10 +22,43 @@ class PriceRefreshWorker(QRunnable):
         self.signals = PriceRefreshSignals()
         self.setAutoDelete(True)
 
+    def safe_emit_signal(self, signal_name: str, *args) -> bool:
+        """
+        安全发射信号，避免 RuntimeError: wrapped C/C++ object has been deleted
+        
+        参数:
+            signal_name: 信号名称，如 'prices_updated', 'error'
+            *args: 信号参数
+            
+        返回:
+            bool: 是否成功发射
+        """
+        try:
+            signal = getattr(self.signals, signal_name, None)
+            if signal is not None and hasattr(signal, 'emit'):
+                signal.emit(*args)
+                return True
+        except RuntimeError:
+            # PyQt对象已被删除
+            logger.debug(f"[PriceRefreshWorker] 信号 {signal_name} 发射失败：对象已删除")
+            return False
+        except Exception as e:
+            logger.debug(f"[PriceRefreshWorker] 信号 {signal_name} 发射失败：{e}")
+            return False
+        return False
+    
+    def _prices_updated(self, data: dict) -> None:
+        """使用安全方法更新价格"""
+        self.safe_emit_signal('prices_updated', data)
+    
+    def _error(self, msg: str) -> None:
+        """使用安全方法记录错误"""
+        self.safe_emit_signal('error', msg)
+
     @pyqtSlot()
     def run(self) -> None:
         if not self.tickers:
-            self.signals.prices_updated.emit({})
+            self._prices_updated({})
             return
 
         try:
@@ -34,8 +67,8 @@ class PriceRefreshWorker(QRunnable):
             # 过滤掉 None
             result = {k: v for k, v in quotes.items() if v is not None}
             logger.debug(f"价格刷新完成：{len(result)}/{len(self.tickers)} 支有数据")
-            self.signals.prices_updated.emit(result)
+            self._prices_updated(result)
         except Exception as e:
             logger.warning(f"价格刷新失败：{e}")
-            self.signals.error.emit(str(e))
-            self.signals.prices_updated.emit({})
+            self._error(str(e))
+            self._prices_updated({})

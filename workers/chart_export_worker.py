@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from loguru import logger
 from PyQt6.QtCore import QRunnable, QObject, pyqtSignal
 
 
@@ -40,9 +41,44 @@ class ChartExportWorker(QRunnable):
         self.signals                = ChartExportSignals()
         self.setAutoDelete(True)
 
-    def run(self) -> None:
-        from loguru import logger
+    def safe_emit_signal(self, signal_name: str, *args) -> bool:
+        """
+        安全发射信号，避免 RuntimeError: wrapped C/C++ object has been deleted
+        
+        参数:
+            signal_name: 信号名称，如 'progress', 'completed', 'error'
+            *args: 信号参数
+            
+        返回:
+            bool: 是否成功发射
+        """
+        try:
+            signal = getattr(self.signals, signal_name, None)
+            if signal is not None and hasattr(signal, 'emit'):
+                signal.emit(*args)
+                return True
+        except RuntimeError:
+            # PyQt对象已被删除
+            logger.debug(f"[ChartExportWorker] 信号 {signal_name} 发射失败：对象已删除")
+            return False
+        except Exception as e:
+            logger.debug(f"[ChartExportWorker] 信号 {signal_name} 发射失败：{e}")
+            return False
+        return False
+    
+    def _progress(self, pct: int, msg: str) -> None:
+        """使用安全方法更新进度"""
+        self.safe_emit_signal('progress', pct, msg)
+    
+    def _completed(self, path: str) -> None:
+        """使用安全方法记录完成"""
+        self.safe_emit_signal('completed', path)
+    
+    def _error(self, msg: str) -> None:
+        """使用安全方法记录错误"""
+        self.safe_emit_signal('error', msg)
 
+    def run(self) -> None:
         try:
             import yfinance as yf
             import mplfinance as mpf
@@ -104,7 +140,7 @@ class ChartExportWorker(QRunnable):
                     label = params["label"]
                     msg   = f"正在导出 {ticker} {label}..."
                     pct   = int(done / total * 95) if total > 0 else 0
-                    self.signals.progress.emit(pct, msg)
+                    self._progress(pct, msg)
 
                     try:
                         # 优先长桥，fallback yfinance
@@ -126,7 +162,7 @@ class ChartExportWorker(QRunnable):
                             if reg == "bt":
                                 df = binance_download(
                                     ticker, progress=False, 
-                                    auto_adjust=True,
+                                    auto_adjust=False,
                                     period=params["period"], 
                                     interval=params["interval"],
                                     threads=True,
@@ -140,7 +176,7 @@ class ChartExportWorker(QRunnable):
                                 # tickers_str = " ".join(tickers)
                                 df = yf.download(
                                     ticker, progress=False, 
-                                    auto_adjust=True,
+                                    auto_adjust=False,
                                     period=params["period"], 
                                     interval=params["interval"],
                                     threads=True,
@@ -208,10 +244,9 @@ class ChartExportWorker(QRunnable):
 
                     done += 1
 
-            self.signals.progress.emit(100, f"导出完成，共 {done} 张图表")
-            self.signals.completed.emit(str(self.output_dir))
+            self._progress(100, f"导出完成，共 {done} 张图表")
+            self._completed(str(self.output_dir))
 
         except Exception as e:
-            from loguru import logger as _log
-            _log.exception(f"[图表导出] Worker 异常：{e}")
-            self.signals.error.emit(str(e))
+            logger.exception(f"[图表导出] Worker 异常：{e}")
+            self._error(str(e))
