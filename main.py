@@ -80,6 +80,7 @@ def main() -> int:
     )
 
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
     app.setApplicationName("QuantByQlib")
     app.setApplicationDisplayName("QuantByQlib — 美股量化辅助决策平台")
     app.setOrganizationName("QuantByQlib")

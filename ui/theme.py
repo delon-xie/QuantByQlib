@@ -321,10 +321,25 @@ QComboBox QAbstractItemView {{
 }}
 
 /* ── 标签页 ──────────────────────────────────────────── */
+/* ── background-color: {c['bg_card']}; ──────────────── */
+QTabWidget {{
+    background: {COLORS['bg_sidebar']};
+    background-color: {COLORS['bg_sidebar']};
+    border: none;
+    padding: 0;
+}}
 QTabWidget::pane {{
-    background-color: {c['bg_card']};
+    background: {COLORS['bg_sidebar']};
+    background-color: {COLORS['bg_sidebar']};
     border: 1px solid {c['border']};
     border-radius: 0 8px 8px 8px;
+}}
+QTabBar {{
+    background: {COLORS['bg_sidebar']};
+    background-color: {COLORS['bg_sidebar']};
+    border: none;
+    padding: 0;
+    margin: 0;
 }}
 QTabBar::tab {{
     background-color: {c['bg_main']};

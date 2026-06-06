@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QLineEdit, QGroupBox, QGridLayout,
     QProgressBar, QTextEdit, QScrollArea, QFrame,
     QSizePolicy, QMessageBox, QTableWidget, QTableWidgetItem,
-    QHeaderView, QComboBox, QFileDialog
+    QHeaderView, QComboBox, QFileDialog, QTabWidget
 )
 from PyQt6.QtCore import Qt, QThreadPool
 from PyQt6.QtGui import QColor
@@ -143,6 +143,101 @@ class ConfigPage(QWidget):
         subtitle.setObjectName("page_subtitle")
         layout.addWidget(subtitle)
 
+        # ── 使用标签页组织功能 ─────────────────────────────
+        self._tab_widget = QTabWidget()
+        self._tab_widget.setDocumentMode(True)
+        self._tab_widget.setMovable(False)
+        # Tab页放到底部
+        self._tab_widget.setTabPosition(QTabWidget.TabPosition.South)
+        # 样式设置：背景色与主题一致
+        self._tab_widget.setStyleSheet(
+            f"""
+            QTabWidget {{
+                background: {COLORS['bg_sidebar']};
+                background-color: {COLORS['bg_sidebar']};
+                border: none;
+                padding: 0;
+            }}
+            QTabWidget::pane {{
+                border: none;
+                background: {COLORS['bg_sidebar']};
+                background-color: {COLORS['bg_sidebar']};
+                padding: 0;
+                top: 0px;
+            }}
+            QTabBar {{
+                background: {COLORS['bg_card_hover']};
+                background-color: {COLORS['bg_card_hover']};
+                border: none;
+                padding: 0;
+                margin: 0;
+                border-bottom: 1px solid transparent;
+            }}
+            QTabBar::tab {{
+                background: {COLORS['bg_sidebar']};
+                background-color: {COLORS['bg_sidebar']};
+                color: {COLORS['text_secondary']};
+                padding: 8px 12px;
+                margin: 0;
+                border: 1px solid {COLORS['border']};
+                border-bottom: none; /* 避免底部双边框 */
+                min-width: 80px;
+                text-align: center;
+            }}
+            QTabBar::tab:selected {{
+                background: {COLORS['bg_card']};
+                background-color: {COLORS['bg_card']};
+                color: {COLORS['text_primary']};
+                border-bottom: 2px solid {COLORS['primary']};
+            }}
+            QTabBar::tab:hover {{
+                background: {COLORS['bg_card_hover']};
+                background-color: {COLORS['bg_card_hover']};
+            }}
+            """
+        )
+        
+        # 标签1：API 配置
+        tab_api = self._create_api_config_tab()
+        self._tab_widget.addTab(tab_api, "🔑 API 配置")
+        
+        # 标签2：K线数据
+        tab_kline = self._create_kline_data_tab()
+        self._tab_widget.addTab(tab_kline, "📊 K线数据")
+        
+        # 标签3：基础数据
+        tab_basic = self._create_basic_data_tab()
+        self._tab_widget.addTab(tab_basic, "📋 基础数据")
+        
+        # 标签4：导出设置
+        tab_export = self._create_export_tab()
+        self._tab_widget.addTab(tab_export, "📁 导出设置")
+
+        layout.addWidget(self._tab_widget)
+        # 移除 stretch，让 tab_widget 占满剩余空间
+        layout.setStretchFactor(self._tab_widget, 1)
+
+    def _create_api_config_tab(self) -> QWidget:
+        """创建 API 配置标签页"""
+        # 外层 widget 用于 tab
+        widget = QWidget()
+        outer_layout = QVBoxLayout(widget)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 添加滚动区域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        outer_layout.addWidget(scroll)
+        
+        # 滚动区域内的内容 widget
+        content = QWidget()
+        scroll.setWidget(content)
+        
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(16)
+        
         # ── API Key 配置区 ────────────────────────────────
         api_group = QGroupBox("数据源 API Key 配置（均为免费注册）")
         api_layout = QGridLayout(api_group)
@@ -236,9 +331,33 @@ class ConfigPage(QWidget):
         hdr = self._test_table.horizontalHeader()
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self._test_table)
+        
+        layout.addStretch()
+        return widget
+
+    def _create_kline_data_tab(self) -> QWidget:
+        """创建K线数据标签页"""
+        # 外层 widget 用于 tab
+        widget = QWidget()
+        outer_layout = QVBoxLayout(widget)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 添加滚动区域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        outer_layout.addWidget(scroll)
+        
+        # 滚动区域内的内容 widget
+        content = QWidget()
+        scroll.setWidget(content)
+        
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(16)
 
         # ── Qlib 数据管理区 ──────────────────────────────
-        qlib_group = QGroupBox("Qlib 美股数据管理")
+        qlib_group = QGroupBox("Qlib K线数据管理")
         qlib_layout = QVBoxLayout(qlib_group)
         qlib_layout.setSpacing(10)
 
@@ -286,7 +405,7 @@ class ConfigPage(QWidget):
 
         # 按钮行
         dl_btn_row = QHBoxLayout()
-        self._dl_sp500_btn = QPushButton("⬇️ 下载美股 Qlib 数据（约 450MB）")
+        self._dl_sp500_btn = QPushButton("⬇️ 下载 Qlib K线数据（约 450MB）")
         self._dl_sp500_btn.setMinimumHeight(38)
         self._dl_sp500_btn.setToolTip(
             "下载 SunsetWolf/qlib_dataset 美股日频数据集\n"
@@ -317,7 +436,7 @@ class ConfigPage(QWidget):
         layout.addWidget(qlib_group)
 
         # ── yfinance 采集最新数据区 ───────────────────────
-        collect_group = QGroupBox("采集最新美股数据（yfinance）")
+        collect_group = QGroupBox("采集最新K线数据（yfinance）")
         collect_layout = QVBoxLayout(collect_group)
         collect_layout.setSpacing(10)
 
@@ -351,8 +470,63 @@ class ConfigPage(QWidget):
         )
         collect_layout.addWidget(self._collect_log)
 
+        # 按钮行
+        col_btn_row = QHBoxLayout()
+        # ---- 下拉框 ----
+        self._instrument_combo = InstrumentComboBox()
+        self._instrument_combo.setMinimumHeight(38)
+        self._instrument_combo.setPlaceholderText("请选择采集范围")
+        self._instrument_combo.setToolTip(
+            "选择股票范围：\n"
+            f"从 {get_state().reg}_data/instruments 选择txt文件作为股票范围\n"
+            "默认选择（all）全部股票：采集所有股票的最新数据（耗时较长）\n"
+        )
+
+        # ---- 采集按钮 ----
+        self._col_collect_btn = QPushButton("⬇️ 采集K线数据")
+        self._col_collect_btn.setObjectName("btn_primary")
+        self._col_collect_btn.setMinimumHeight(38)
+        self._col_collect_btn.clicked.connect(self._on_collect_clicked)
+
+        col_btn_row.addWidget(self._instrument_combo, 2)
+        col_btn_row.addWidget(self._col_collect_btn, 2)
+
+        self._col_cancel_btn = QPushButton("⏹ 取消")
+        self._col_cancel_btn.setObjectName("btn_danger")
+        self._col_cancel_btn.setMinimumHeight(38)
+        self._col_cancel_btn.setVisible(False)
+        self._col_cancel_btn.clicked.connect(self._on_cancel_collect)
+        col_btn_row.addWidget(self._col_cancel_btn)
+
+        collect_layout.addLayout(col_btn_row)
+        layout.addWidget(collect_group)
+        
+        layout.addStretch()
+        return widget
+
+    def _create_basic_data_tab(self) -> QWidget:
+        """创建基础数据标签页"""
+        # 外层 widget 用于 tab
+        widget = QWidget()
+        outer_layout = QVBoxLayout(widget)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 添加滚动区域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        outer_layout.addWidget(scroll)
+        
+        # 滚动区域内的内容 widget
+        content = QWidget()
+        scroll.setWidget(content)
+        
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(16)
+
         # ── 股票基础信息更新区域 ──
-        instruments_group = QGroupBox("股票基础信息更新（A股）")
+        instruments_group = QGroupBox("股票基础信息更新")
         instruments_layout = QVBoxLayout(instruments_group)
         instruments_layout.setSpacing(10)
 
@@ -377,7 +551,7 @@ class ConfigPage(QWidget):
         # 日志框
         self._instruments_log = QTextEdit()
         self._instruments_log.setReadOnly(True)
-        self._instruments_log.setMaximumHeight(140)
+        self._instruments_log.setMaximumHeight(200)
         self._instruments_log.setPlaceholderText("更新日志将在这里实时显示...")
         self._instruments_log.setStyleSheet(
             f"background: #0A0718; color: {COLORS['text_secondary']}; "
@@ -388,7 +562,7 @@ class ConfigPage(QWidget):
         # 按钮行
         instruments_btn_row = QHBoxLayout()
         
-        self._col_instruments_btn = QPushButton("⬇️ 更新股票基础信息")
+        self._col_instruments_btn = QPushButton("⬇️ 更新基础数据")
         self._col_instruments_btn.setObjectName("btn_instruments")
         self._col_instruments_btn.setMinimumHeight(38)
         self._col_instruments_btn.clicked.connect(self._on_instruments_clicked)
@@ -402,68 +576,31 @@ class ConfigPage(QWidget):
         instruments_btn_row.addWidget(self._instruments_cancel_btn)
 
         instruments_layout.addLayout(instruments_btn_row)
-        collect_layout.addWidget(instruments_group)
-
-        # 按钮行
-        col_btn_row = QHBoxLayout()
-        # ---- 下拉框 ----
-        self._instrument_combo = InstrumentComboBox()
-        self._instrument_combo.setMinimumHeight(38)
-        self._instrument_combo.setPlaceholderText("请选择采集范围")
-        self._instrument_combo.setToolTip(
-            "选择股票范围：\n"
-            f"从 {get_state().reg}_data/instruments 选择txt文件作为股票范围\n"
-            "默认选择（all）全部股票：采集所有股票的最新数据（耗时较长）\n"
-        )
-
-        # ---- 采集按钮 ----
-        self._col_collect_btn = QPushButton("⬇️ 采集（选中范围）")
-        self._col_collect_btn.setObjectName("btn_primary")
-        self._col_collect_btn.setMinimumHeight(38)
-        self._col_collect_btn.clicked.connect(self._on_collect_clicked)
-
-        col_btn_row.addWidget(self._instrument_combo, 2)
-        col_btn_row.addWidget(self._col_collect_btn, 2)
-
-        #self._col_sp500_btn = QPushButton("⬇️ 采集 S&P 500（推荐）")
-        #self._col_sp500_btn.setMinimumHeight(38)
-        #self._col_sp500_btn.setToolTip(
-        #    "从 Yahoo Finance 采集 S&P 500 约 503 支股票最新日频数据\n"
-        #    "追加写入 Qlib 二进制格式，历史数据不会被覆盖\n"
-        #    "预计 1-2 分钟（取决于网络速度）"
-        #)
-        #self._col_sp500_btn.clicked.connect(lambda: self._on_collect("sp500"))
-        #col_btn_row.addWidget(self._col_sp500_btn)
-
-        #self._col_ndx_btn = QPushButton("⬇️ 采集 Nasdaq 100")
-        #self._col_ndx_btn.setObjectName("btn_secondary")
-        #self._col_ndx_btn.setMinimumHeight(38)
-        #self._col_ndx_btn.setToolTip(
-        #    "从 Yahoo Finance 采集 Nasdaq 100 约 100 支股票最新日频数据\n"
-        #    "预计 20-40 秒"
-        #)
-        #col_btn_row.addWidget(self._col_ndx_btn)
+        layout.addWidget(instruments_group)
         
-        #self._col_all_btn = QPushButton("⬇️ 采集全部股票")
-        #self._col_all_btn.setObjectName("btn_secondary")
-        #self._col_all_btn.setMinimumHeight(38)
-        #self._col_all_btn.setToolTip(
-        #    "从 Yahoo Finance 采集 全部 9000 余支股票最新日频数据\n"
-        #    "追加写入 Qlib 二进制格式，历史数据不会被覆盖\n"
-        #    "预计 10-20 分钟（取决于网络速度）"
-        #)
-        #self._col_all_btn.clicked.connect(lambda: self._on_collect("all"))
-        #col_btn_row.addWidget(self._col_all_btn)
+        layout.addStretch()
+        return widget
 
-        self._col_cancel_btn = QPushButton("⏹ 取消")
-        self._col_cancel_btn.setObjectName("btn_danger")
-        self._col_cancel_btn.setMinimumHeight(38)
-        self._col_cancel_btn.setVisible(False)
-        self._col_cancel_btn.clicked.connect(self._on_cancel_collect)
-        col_btn_row.addWidget(self._col_cancel_btn)
-
-        collect_layout.addLayout(col_btn_row)
-        layout.addWidget(collect_group)
+    def _create_export_tab(self) -> QWidget:
+        """创建导出设置标签页"""
+        # 外层 widget 用于 tab
+        widget = QWidget()
+        outer_layout = QVBoxLayout(widget)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 添加滚动区域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        outer_layout.addWidget(scroll)
+        
+        # 滚动区域内的内容 widget
+        content = QWidget()
+        scroll.setWidget(content)
+        
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(16)
 
         # ── 每日导出目录配置 ──────────────────────────────
         export_group = QGroupBox("每日数据导出目录配置")
@@ -507,6 +644,7 @@ class ConfigPage(QWidget):
 
         layout.addWidget(export_group)
         layout.addStretch()
+        return widget
 
     # ── 数据加载 ───────────────────────────────────────────
 
