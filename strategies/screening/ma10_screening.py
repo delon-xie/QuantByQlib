@@ -7,7 +7,8 @@ import numpy as np
 from typing import Optional, Callable, List
 from loguru import logger
 from strategies.base_strategy import BaseStrategy, StrategyResult
-
+from strategies.screening.signal_lifecycle_scorer import SignalLifecycleScorer
+from strategies.screening.adaptive_time_window_scorer import AdaptiveTimeWindowScorer
 
 class MA10TurnUpScreenStrategy(BaseStrategy):
     """MA10抬头选股策略 —— 放宽条件版本"""
@@ -282,6 +283,19 @@ class MA10TurnUpScreenStrategy(BaseStrategy):
             
             return is_turn_up, adjusted_strength, turn_up_start_days_ago
         
+        if is_turn_up and avg_strength > 0:
+            # 计算抬头开始的天数
+            turn_up_start_days_ago = self._find_turn_up_start(ma10)
+            
+            # 应用动量衰减模型
+            decayed_strength = momentum_decay_model(
+                initial_momentum=avg_strength * 1000,  # 放大以便计算
+                days_ago=turn_up_start_days_ago,
+                decay_factor=0.9  # 每日衰减10%
+            ) / 1000  # 缩小回原尺度
+            
+            return is_turn_up, decayed_strength, turn_up_start_days_ago
+        
         return False, 0, 0
     
     def _check_trend_turn_up(self, ma10: pd.Series) -> tuple[bool, float]:
@@ -363,6 +377,40 @@ class MA10TurnUpScreenStrategy(BaseStrategy):
         
         return round(total_score, 4)
     
+    def _calculate_score_with_lifecycle(self, 
+                                    turn_up_strength: float, 
+                                    ma10: pd.Series, 
+                                    close_prices: pd.Series,
+                                    turn_up_days_ago: int = 0) -> float:
+        """带生命周期调整的分数计算"""
+        # 原始分数计算
+        base_score = self._calculate_score(turn_up_strength, ma10, close_prices)
+        
+        # 生命周期调整
+        if turn_up_days_ago > 0:
+            # 计算趋势加速度
+            if len(ma10) >= 5:
+                recent_accel = (ma10.pct_change().iloc[-1] - 
+                            ma10.pct_change().iloc[-2])
+            else:
+                recent_accel = 0
+            
+            # 使用生命周期模型
+            scorer = SignalLifecycleScorer()
+            # scorer = AdaptiveTimeWindowScorer()
+
+            lifecycle_score = scorer.calculate_lifecycle_score(
+                turn_up_days_ago, 
+                turn_up_strength,
+                recent_accel
+            )
+            
+            # 综合得分
+            final_score = base_score * 0.7 + lifecycle_score * 0.3
+        else:
+            final_score = base_score
+        
+        return round(final_score, 4)
     def _report(self, cb, pct: int, msg: str) -> None:
         if cb:
             try:
@@ -370,3 +418,23 @@ class MA10TurnUpScreenStrategy(BaseStrategy):
             except Exception:
                 pass
         logger.debug(f"[{self.KEY}] {pct}% - {msg}")
+
+def momentum_decay_model(initial_momentum: float, 
+                        days_ago: int,
+                        decay_factor: float = 0.85) -> float:
+    """
+    动量衰减模型：动量随时间自然衰减
+    
+    参数：
+    - initial_momentum: 初始动量
+    - days_ago: 信号发生天数
+    - decay_factor: 日衰减因子
+    """
+    if days_ago <= 0:
+        return initial_momentum
+    
+    # 动量指数衰减
+    decayed_momentum = initial_momentum * (decay_factor ** days_ago)
+    
+    # 考虑动量维持性：如果当前仍在加速，衰减减少
+    return decayed_momentum

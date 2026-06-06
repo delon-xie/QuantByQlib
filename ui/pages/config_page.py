@@ -29,9 +29,86 @@ class ConfigPage(QWidget):
         self._download_worker = None
         self._test_worker = None
         self._collect_worker = None
+        self._instruments_worker = None
         self._setup_ui()
         self._load_saved_keys()
         self._refresh_qlib_status()
+
+    def _on_instruments_clicked(self):
+        """启动股票基础信息更新 Worker"""
+        from PyQt6.QtWidgets import QMessageBox
+        
+        confirm = QMessageBox.question(
+            self, "确认更新",
+            "将从东方财富获取最新A股股票基础信息（约5800+支股票）。\n"
+            "此操作可能耗时较长（取决于网络速度，约10分钟），请确保网络稳定。\n\n"
+            "确认开始更新？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        self._set_instruments_running(True)
+        self._instruments_log.clear()
+        self._instruments_log.append("[INFO] === 股票基础信息更新开始 ===")
+
+        from workers.instruments_updater import QLibInstrumentsUpdaterWorker
+        worker = QLibInstrumentsUpdaterWorker()
+        worker.signals.progress.connect(self._on_instruments_progress)
+        worker.signals.log_line.connect(self._append_instruments_log)
+        worker.signals.completed.connect(self._on_instruments_completed)
+        worker.signals.error.connect(self._on_instruments_error)
+
+        if(self._instruments_worker):
+            self._instruments_worker = None
+        self._instruments_worker = worker
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_instruments_progress(self, pct: int, msg: str) -> None:
+        self._instruments_progress.setValue(pct)
+        self._instruments_status.setText(msg)
+
+    def _on_instruments_completed(self, ok: bool, msg: str) -> None:
+        self._set_instruments_running(False)
+        if ok:
+            self._instruments_status.setText(f"✅ {msg}")
+            self._instruments_progress.setValue(100)
+            # 刷新 instruments 下拉框
+            try:
+                self._instrument_combo.refresh()
+            except Exception:
+                pass
+            try:
+                from core.event_bus import get_event_bus
+                get_event_bus().status_message.emit("股票基础信息更新完成")
+            except Exception:
+                pass
+        else:
+            self._instruments_status.setText(f"❌ {msg}")
+        self._instruments_worker = None
+
+    def _on_instruments_error(self, err: str) -> None:
+        self._set_instruments_running(False)
+        self._append_instruments_log(f"[ERROR] {err}")
+        self._instruments_worker = None
+
+    def _set_instruments_running(self, running: bool) -> None:
+        self._col_instruments_btn.setEnabled(not running)
+        self._instruments_cancel_btn.setVisible(running)
+        self._instruments_progress.setVisible(running)
+        if running:
+            self._instruments_progress.setValue(0)
+
+    def _append_instruments_log(self, text: str) -> None:
+        self._instruments_log.append(text)
+        sb = self._instruments_log.verticalScrollBar()
+        sb.setValue(sb.maximum())
+
+    def _on_cancel_instruments(self) -> None:
+        if self._instruments_worker:
+            self._instruments_worker.cancel()
+        self._set_instruments_running(False)
+        self._append_instruments_log("[INFO] 用户取消")
 
     def _on_collect_clicked(self):
         instrument = self._instrument_combo.currentText()
@@ -274,6 +351,59 @@ class ConfigPage(QWidget):
         )
         collect_layout.addWidget(self._collect_log)
 
+        # ── 股票基础信息更新区域 ──
+        instruments_group = QGroupBox("股票基础信息更新（A股）")
+        instruments_layout = QVBoxLayout(instruments_group)
+        instruments_layout.setSpacing(10)
+
+        instruments_info = QLabel(
+            "从东方财富获取最新A股股票列表（约5800+支），用于更新 instruments 目录下的 CSV 文件。\n"
+            "此操作可能耗时较长（取决于网络速度，约10分钟），建议在网络稳定时执行。"
+        )
+        instruments_info.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 12px;")
+        instruments_info.setWordWrap(True)
+        instruments_layout.addWidget(instruments_info)
+
+        # 进度条
+        self._instruments_progress = QProgressBar()
+        self._instruments_progress.setVisible(False)
+        self._instruments_progress.setMinimumHeight(12)
+        instruments_layout.addWidget(self._instruments_progress)
+
+        self._instruments_status = QLabel("")
+        self._instruments_status.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 12px;")
+        instruments_layout.addWidget(self._instruments_status)
+
+        # 日志框
+        self._instruments_log = QTextEdit()
+        self._instruments_log.setReadOnly(True)
+        self._instruments_log.setMaximumHeight(140)
+        self._instruments_log.setPlaceholderText("更新日志将在这里实时显示...")
+        self._instruments_log.setStyleSheet(
+            f"background: #0A0718; color: {COLORS['text_secondary']}; "
+            f"font-family: 'Courier New', monospace; font-size: 11px;"
+        )
+        instruments_layout.addWidget(self._instruments_log)
+
+        # 按钮行
+        instruments_btn_row = QHBoxLayout()
+        
+        self._col_instruments_btn = QPushButton("⬇️ 更新股票基础信息")
+        self._col_instruments_btn.setObjectName("btn_instruments")
+        self._col_instruments_btn.setMinimumHeight(38)
+        self._col_instruments_btn.clicked.connect(self._on_instruments_clicked)
+        instruments_btn_row.addWidget(self._col_instruments_btn)
+
+        self._instruments_cancel_btn = QPushButton("⏹ 取消")
+        self._instruments_cancel_btn.setObjectName("btn_danger")
+        self._instruments_cancel_btn.setMinimumHeight(38)
+        self._instruments_cancel_btn.setVisible(False)
+        self._instruments_cancel_btn.clicked.connect(self._on_cancel_instruments)
+        instruments_btn_row.addWidget(self._instruments_cancel_btn)
+
+        instruments_layout.addLayout(instruments_btn_row)
+        collect_layout.addWidget(instruments_group)
+
         # 按钮行
         col_btn_row = QHBoxLayout()
         # ---- 下拉框 ----
@@ -294,7 +424,7 @@ class ConfigPage(QWidget):
 
         col_btn_row.addWidget(self._instrument_combo, 2)
         col_btn_row.addWidget(self._col_collect_btn, 2)
-        
+
         #self._col_sp500_btn = QPushButton("⬇️ 采集 S&P 500（推荐）")
         #self._col_sp500_btn.setMinimumHeight(38)
         #self._col_sp500_btn.setToolTip(

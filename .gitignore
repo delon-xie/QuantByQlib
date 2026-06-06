@@ -12,6 +12,7 @@ build/
 *.dylib
 
 # Virtual environments
+.optvenv/
 .venv/
 venv/
 env/

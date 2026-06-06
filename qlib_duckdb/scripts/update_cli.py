@@ -377,7 +377,8 @@ def sync_from_api(args):
         # 导入数据获取模块
         try:
             if data_source == "akshare":
-                import akshare as ak
+                from services.akshare_pro import AKSharePro
+                ak = AKSharePro(patch_requests=True)
                 print("✅ 已导入 akshare")
             elif data_source == "yfinance":
                 import yfinance as yf

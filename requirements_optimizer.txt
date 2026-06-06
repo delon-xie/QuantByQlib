@@ -1,0 +1,12 @@
+# 策略优化框架专用依赖
+pyqlib>=0.9.6
+pandas>=2.0.0
+numpy==1.26.4
+yfinance>=0.2.30
+loguru>=0.7.0
+matplotlib>=3.5.0
+hmmlearn>=0.3.0
+scikit-optimize>=0.9.0
+joblib>=1.2.0
+python-binance
+akshare

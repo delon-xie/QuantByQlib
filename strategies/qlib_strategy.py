@@ -18,6 +18,8 @@ from strategies.base_strategy import BaseStrategy, StrategyResult
 from strategies.screening.ma10_screening import MA10TurnUpScreenStrategy  # 新增传统策略
 from strategies.screening.golden_cross_screening import GoldenCrossMAStrategy
 from strategies.screening.early_trend_screening import EarlyTrendFormationStrategy
+from strategies.screening.trendline_breakout_screening import TrendlineBreakoutStrategy
+from strategies.screening.early_trend_hierarchical import EarlyTrendHierarchicalStrategy
 
 from core.model_helper import get_model
 from pathlib import Path
@@ -1538,95 +1540,104 @@ from strategies.screening.ma10_screening import MA10TurnUpScreenStrategy
 # 创建不同配置的策略
 def MA10_STRICT(**kwargs):
     """周线严格模式MA10策略"""
-    return MA10TurnUpScreenStrategy(topk=20, turn_up_mode="strict", freq="day")
+    return MA10TurnUpScreenStrategy(
+        topk=kwargs.get("topk", 20), 
+        turn_up_mode=kwargs.get("turn_up_mode", "strict"), 
+        freq=kwargs.get("freq", "day")
+    )
 
 def MA10_RELAXED(**kwargs):
     """周线放宽模式MA10策略"""
-    return MA10TurnUpScreenStrategy(topk=20, turn_up_mode="relaxed", freq="day")
+    return MA10TurnUpScreenStrategy(
+        topk=kwargs.get("topk", 20), 
+        turn_up_mode=kwargs.get("turn_up_mode", "relaxed"), 
+        freq=kwargs.get("freq", "day")
+    )
 
 def MA10_TREND(**kwargs):
     """周线趋势模式MA10策略"""
-    return MA10TurnUpScreenStrategy(topk=20, turn_up_mode="trend", freq="day")
+    return MA10TurnUpScreenStrategy(
+        topk=kwargs.get("topk", 20),
+        turn_up_mode=kwargs.get("turn_up_mode", "trend"), 
+        freq=kwargs.get("freq", "day")
+    )
 
-def MA10_STRICT_WEEK(**kwargs):
-    """周线严格模式MA10策略"""
-    return MA10TurnUpScreenStrategy(topk=20, turn_up_mode="strict", freq="week")
-
-def MA10_RELAXED_WEEK(**kwargs):
-    """周线放宽模式MA10策略"""
-    return MA10TurnUpScreenStrategy(topk=20, turn_up_mode="relaxed", freq="week")
-
-def MA10_TREND_WEEK(**kwargs):
-    """周线趋势模式MA10策略"""
-    return MA10TurnUpScreenStrategy(topk=20, turn_up_mode="trend", freq="week")
-def create_golden_cross_510_day(**kwargs):
+def create_golden_cross_510(**kwargs):
     """5-10日线金叉策略"""
     return GoldenCrossMAStrategy(
-        topk=20,
-        golden_cross_type="510",
-        max_cross_days=10,
-        require_volume_confirmation=True,
-        min_price_above_ma5=True,
-        freq="day"
+        topk=kwargs.get("topk", 20),
+        golden_cross_type=kwargs.get("golden_cross_type", "510"),
+        max_cross_days=kwargs.get("max_cross_days", 10),
+        require_volume_confirmation=kwargs.get("require_volume_confirmation", True),
+        min_price_above_ma5=kwargs.get("min_price_above_ma5", True),
+        freq=kwargs.get("freq", "day")
     )
 
-def create_golden_cross_1020_day(**kwargs):
+def create_golden_cross_1020(**kwargs):
     """10-20日线金叉策略"""
     return GoldenCrossMAStrategy(
-        topk=20,
-        golden_cross_type="1020",
-        max_cross_days=10,
-        freq="day"
+        topk=kwargs.get("topk", 20),
+        golden_cross_type=kwargs.get("golden_cross_type", "1020"),
+        max_cross_days=kwargs.get("max_cross_days", 10),
+        freq=kwargs.get("freq", "day")
     )
 
-def create_golden_cross_510_week(**kwargs):
-    """5-10日线金叉策略"""
-    return GoldenCrossMAStrategy(
-        topk=20,
-        golden_cross_type="510",
-        max_cross_days=10,
-        require_volume_confirmation=True,
-        min_price_above_ma5=True,
-        freq="week"
-    )
-
-def create_golden_cross_1020_week(**kwargs):
-    """10-20日线金叉策略"""
-    return GoldenCrossMAStrategy(
-        topk=20,
-        golden_cross_type="1020",
-        max_cross_days=10,
-        freq="week"
-    )
-
-def create_early_trend_day(**kwargs):
+def create_early_trend(**kwargs):
     """日线趋势早期识别策略"""
     return EarlyTrendFormationStrategy(
-        topk=20,
-        max_convergence_days=20,
-        min_price_distance_to_resistance=0.05,
-        volume_increase_ratio=1.2,
-        require_small_slope=True,
-        max_slope=0.02,
-        freq="day",
-        use_macd_confirmation=True,
-        use_bollinger_squeeze=True
+        topk=kwargs.get("topk", 20),
+        max_convergence_days=kwargs.get("max_convergence_days", 20),
+        min_price_distance_to_resistance=kwargs.get("min_price_distance_to_resistance", 0.05),
+        volume_increase_ratio=kwargs.get("volume_increase_ratio", 1.2),
+        require_small_slope=kwargs.get("require_small_slope", True),
+        max_slope=kwargs.get("max_slope", 0.02),
+        freq=kwargs.get("freq", "day"),
+        use_macd_confirmation=kwargs.get("use_macd_confirmation", True),
+        use_bollinger_squeeze=kwargs.get("use_bollinger_squeeze", True)
     )
 
-def create_early_trend_week(**kwargs):
-    """日线趋势早期识别策略"""
-    return EarlyTrendFormationStrategy(
-        topk=20,
-        max_convergence_days=20,
-        min_price_distance_to_resistance=0.05,
-        volume_increase_ratio=1.2,
-        require_small_slope=True,
-        max_slope=0.02,
-        freq="week",
-        use_macd_confirmation=True,
-        use_bollinger_squeeze=True
+def create_trendline_breakout(**kwargs):
+    """下降趋势线突破策略"""
+    return TrendlineBreakoutStrategy(
+        topk=kwargs.get("topk", 20),
+        trendline_points=kwargs.get("trendline_points", 20),
+        breakthrough_threshold=kwargs.get("breakthrough_threshold", 0.03),  # 突破3%
+        volume_confirmation_ratio=kwargs.get("volume_confirmation_ratio", 1.5),  # 成交量放大1.5倍
+        consolidation_days=kwargs.get("consolidation_days", 3),
+        retest_confirmation=kwargs.get("retest_confirmation", True),
+        min_trend_duration=kwargs.get("min_trend_duration", 10),
+        freq=kwargs.get("freq", "day")
     )
 
+def create_early_trend_hierarchical(**kwargs):
+    """层次化评分版趋势早期策略"""
+    return EarlyTrendHierarchicalStrategy(
+        topk=kwargs.get("topk", 20),
+        # 核心层配置
+        core_conditions_required=kwargs.get("core_conditions_required", 2),  # 至少满足2个核心条件
+        convergence_weight=kwargs.get("convergence_weight", 0.4),      # 均线聚拢权重
+        slope_weight=kwargs.get("slope_weight", 0.3),            # 小斜率权重
+        ma120_weight=kwargs.get("ma120_weight", 0.2),            # MA120权重
+        
+        # 辅助层配置
+        breakout_weight=kwargs.get("breakout_weight", 0.15),        # 突破权重
+        volume_weight=kwargs.get("volume_weight", 0.1),           # 成交量权重
+        
+        # 确认层配置
+        use_price_position=kwargs.get("use_price_position", True),     # 是否使用价格位置比较
+        use_ma120_comparison=kwargs.get("use_ma120_comparison", True),     # 是否使用MA120比较
+        macd_weight=kwargs.get("macd_weight", 0.05),            # MACD权重
+        bollinger_weight=kwargs.get("bollinger_weight", 0.05),       # 布林带权重
+        
+        # 条件参数
+        max_convergence_days=kwargs.get("max_convergence_days", 20),
+        max_slope=kwargs.get("max_slope", 0.02),
+        require_price_above_ma120=kwargs.get("require_price_above_ma120", True),
+        use_macd_confirmation=kwargs.get("use_macd_confirmation", True),
+        use_bollinger_squeeze=kwargs.get("use_bollinger_squeeze", True),
+        freq=kwargs.get("freq", "day")
+    )
+    
 # ── 策略注册表 ────────────────────────────────────────────────
 
 STRATEGY_REGISTRY: dict[str, type] = {
@@ -1641,16 +1652,11 @@ STRATEGY_REGISTRY: dict[str, type] = {
     "ma10_strict":         MA10_STRICT,
     "ma10_relaxed":        MA10_RELAXED, # ma10_turnup
     "ma10_trend":          MA10_TREND,
-    
-    "ma10_strict_week":    MA10_STRICT_WEEK,
-    "ma10_relaxed_week":   MA10_RELAXED_WEEK,
-    "ma10_trend_week":     MA10_TREND_WEEK,
-    "golden_cross_510_day":    create_golden_cross_510_day,
-    "golden_cross_1020_day":   create_golden_cross_1020_day,
-    "golden_cross_510_week": create_golden_cross_510_week,
-    "golden_cross_1020_week": create_golden_cross_1020_week,
-    "early_trend_day": create_early_trend_day,
-    "early_trend_week": create_early_trend_week,
+    "golden_cross_510":    create_golden_cross_510,
+    "golden_cross_1020":   create_golden_cross_1020,
+    "early_trend": create_early_trend,
+    "trendline_breakout": create_trendline_breakout,
+    "early_trend_hierarchical": create_early_trend_hierarchical,
 }
 
 

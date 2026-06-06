@@ -1,31 +1,16 @@
 ``` bash
-# 编辑 ~/.zshrc 确保 conda 掌控虚拟环境管理
-nano ~/.zshrc
-source ~/.zshrc
-
-conda init zsh  # 如果你是 zsh
-# 或
-conda init bash  # 如果你是 bash
-
-conda create -n .qlibvenv python=3.11
-
-# 构建虚拟环境 3.11.13
-# ~/.pyenv/versions/3.11.13/bin/python -m venv .qlibvenv
+# 构建虚拟环境 3.10.20
+~/.pyenv/versions/3.10.20/bin/python -m venv .venv
 # 激活虚拟环境
-# source .qlibvenv/bin/activate
-
-# Torch 环境2.6.0 特殊需求
-conda deactivate
-conda activate .qlibvenv
-
+source .venv/bin/activate
 # 验证版本
+python --version
 python -V
 
 which python
 
-# 2. 先装 PyTorch（conda 渠道，Intel Mac 唯一途径）
-conda install "pytorch>=2.6.0" "torchvision" "torchaudio" "numpy>=2.4.6" -c pytorch -c conda-forge
-
+# 2. pip 环境下安装 pytorch，避免 conda的C库和qlib的C库冲突
+pip install "torch>=2.2.2" torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 python -m pip install --upgrade pip
 pip install -r requirements_base.txt
@@ -115,4 +100,10 @@ pytest dbtest.py::TestPortfolioDatabase -v
 
 # 生成覆盖率报告
 pytest dbtest.py --cov=portfolio.db --cov-report=html
+
+
+# 策略优化环境
+source .optvenv/bin/activate
+
+python examples/optimize_strategy.py --strategy early_trend
 ```

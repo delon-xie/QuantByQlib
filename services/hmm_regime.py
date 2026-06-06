@@ -61,7 +61,7 @@ def run_regime_detection(
     # 1. 获取数据
     spy_df = _fetch_spy_data(d, lookback_years)
     if spy_df is None or spy_df.empty:
-        raise RuntimeError("[HMM] 无法获取 SPY 历史数据")
+        raise RuntimeError(f"[HMM] 无法获取 基准 历史数据")
 
     # 2. 特征工程
     features, dates = _build_features(spy_df)
@@ -122,7 +122,7 @@ def run_regime_detection(
 
 def _fetch_spy_data(anchor: date, lookback_years: int) -> Optional[pd.DataFrame]:
     start = anchor - timedelta(days=int(lookback_years * 365.25) + 30)
-    logger.info(f"[HMM] 获取 SPY 数据：{start} → {anchor}")
+    logger.info(f"[HMM] 获取 基准 数据：{start} → {anchor}")
 
     from core.app_state import get_state
     reg = get_state().reg
@@ -173,7 +173,7 @@ def _fetch_spy_data(anchor: date, lookback_years: int) -> Optional[pd.DataFrame]
             if hasattr(raw.columns, "levels"):
                 raw.columns = raw.columns.get_level_values(0)
             raw.index = pd.to_datetime(raw.index)
-            logger.info(f"[HMM] yfinance SPY 数据 OK，{len(raw)} 条")
+            logger.info(f"[HMM] yfinance {sticker} 数据 OK，{len(raw)} 条")
             return _enrich(raw)
     except Exception as e:
         logger.error(f"[HMM] yfinance 获取失败：{e}")

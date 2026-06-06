@@ -33,8 +33,10 @@ class InstrumentComboBox(QComboBox):
             self.addItem("all")
             return
 
-        for file in instruments_dir.glob("*.txt"):
-            self.addItem(file.stem)
+        for txt_file in instruments_dir.glob("*.txt"):
+            if txt_file.name.endswith("_backup.txt") or txt_file.name.endswith("bak.txt") or txt_file.name.endswith(".fields.txt"):
+                continue
+            self.addItem(txt_file.stem)
 
         # 尽量恢复之前的选择
         index = self.findText(current)

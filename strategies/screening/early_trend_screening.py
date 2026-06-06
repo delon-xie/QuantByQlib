@@ -121,32 +121,46 @@ class EarlyTrendFormationStrategy(BaseStrategy):
                                      high_prices: pd.Series, 
                                      low_prices: pd.Series,
                                      volume: Optional[pd.Series]) -> float:
-        """分析趋势早期形成的多个维度"""
-        total_score = 0
+        """层次化评分：核心条件权重高，辅助条件权重低"""
+        scores = {}
         
-        # 1. 均线聚拢状态（最重要）
-        convergence_score = self._check_ma_convergence(close_prices)
-        if convergence_score <= 0:
-            return 0
-        total_score += convergence_score * 0.4
+        # 核心条件（高权重）
+        scores['convergence'] = self._check_ma_convergence(close_prices)
+        scores['slope'] = self._check_small_slope_upward(close_prices)
         
-        # 2. 小斜率向上
-        slope_score = self._check_small_slope_upward(close_prices)
-        if slope_score <= 0:
-            return 0
-        total_score += slope_score * 0.3
+        # 辅助条件（中等权重）
+        scores['breakout'] = self._check_price_breakout(close_prices, high_prices, low_prices)
         
-        # 3. 价格突破收敛区
-        breakout_score = self._check_price_breakout(close_prices, high_prices, low_prices)
-        total_score += breakout_score * 0.2
-        
-        # 4. 成交量确认
+        # 确认条件（低权重）
         if volume is not None:
-            volume_score = self._check_volume_confirmation(close_prices, volume)
-            total_score += volume_score * 0.1
+            scores['volume'] = self._check_volume_confirmation(close_prices, volume)
         
-        return round(total_score, 4)
-    
+        if self.use_macd_confirmation:
+            scores['macd'] = self._check_macd_confirmation(close_prices)
+        
+        if self.use_bollinger_squeeze:
+            scores['bollinger'] = self._check_bollinger_squeeze(close_prices)
+        
+        # 计算加权总分
+        weights = {
+            'convergence': 0.4,  # 核心条件权重高
+            'slope': 0.3,        # 核心条件权重高
+            'breakout': 0.15,    # 辅助条件
+            'volume': 0.1,       # 确认条件
+            'macd': 0.05,        # 技术指标
+            'bollinger': 0.05,   # 技术指标
+        }
+        
+        total_score = 0
+        for key, score in scores.items():
+            if key in weights and score > 0:
+                total_score += score * weights[key]
+        
+        # 设置最低门槛：核心条件不能都为0
+        if scores['convergence'] <= 0 and scores['slope'] <= 0:
+            return 0
+        
+        return round(total_score, 4)    
     def _check_ma_convergence(self, close_prices: pd.Series) -> float:
         """检查均线聚拢状态"""
         # 计算多周期均线
@@ -277,65 +291,65 @@ class EarlyTrendFormationStrategy(BaseStrategy):
                 pass
         logger.debug(f"[{self.KEY}] {pct}% - {msg}")
 
-def _check_macd_confirmation(self, close_prices: pd.Series) -> float:
-        """检查MACD零轴附近金叉（趋势早期信号）"""
-        if len(close_prices) < 26:
+    def _check_macd_confirmation(self, close_prices: pd.Series) -> float:
+            """检查MACD零轴附近金叉（趋势早期信号）"""
+            if len(close_prices) < 26:
+                return 0
+            
+            # 计算EMA
+            ema12 = close_prices.ewm(span=12, adjust=False).mean()
+            ema26 = close_prices.ewm(span=26, adjust=False).mean()
+            dif = ema12 - ema26
+            dea = dif.ewm(span=9, adjust=False).mean()
+            macd = (dif - dea) * 2
+            
+            if len(dif) < 2:
+                return 0
+            
+            # 1. DIF在零轴附近（-0.5% 到 0.5%）
+            current_dif = dif.iloc[-1]
+            if abs(current_dif / close_prices.iloc[-1]) > 0.005:  # 超过0.5%
+                return 0
+            
+            # 2. 最近发生金叉
+            is_golden_cross = False
+            for i in range(1, min(5, len(dif))):
+                if (dif.iloc[-i] > dea.iloc[-i] and 
+                    dif.iloc[-i-1] <= dea.iloc[-i-1]):
+                    is_golden_cross = True
+                    break
+            
+            if is_golden_cross:
+                # 3. MACD柱状线由负转正
+                if len(macd) >= 3 and macd.iloc[-1] > 0 and macd.iloc[-2] < 0:
+                    return 15
+            
             return 0
-        
-        # 计算EMA
-        ema12 = close_prices.ewm(span=12, adjust=False).mean()
-        ema26 = close_prices.ewm(span=26, adjust=False).mean()
-        dif = ema12 - ema26
-        dea = dif.ewm(span=9, adjust=False).mean()
-        macd = (dif - dea) * 2
-        
-        if len(dif) < 2:
-            return 0
-        
-        # 1. DIF在零轴附近（-0.5% 到 0.5%）
-        current_dif = dif.iloc[-1]
-        if abs(current_dif / close_prices.iloc[-1]) > 0.005:  # 超过0.5%
-            return 0
-        
-        # 2. 最近发生金叉
-        is_golden_cross = False
-        for i in range(1, min(5, len(dif))):
-            if (dif.iloc[-i] > dea.iloc[-i] and 
-                dif.iloc[-i-1] <= dea.iloc[-i-1]):
-                is_golden_cross = True
-                break
-        
-        if is_golden_cross:
-            # 3. MACD柱状线由负转正
-            if len(macd) >= 3 and macd.iloc[-1] > 0 and macd.iloc[-2] < 0:
-                return 15
-        
-        return 0
 
-def _check_bollinger_squeeze(self, close_prices: pd.Series) -> float:
-        """检查布林带收口突破（波动率压缩后扩张）"""
-        if len(close_prices) < 20:
+    def _check_bollinger_squeeze(self, close_prices: pd.Series) -> float:
+            """检查布林带收口突破（波动率压缩后扩张）"""
+            if len(close_prices) < 20:
+                return 0
+            
+            # 计算布林带
+            ma20 = close_prices.rolling(20).mean()
+            std20 = close_prices.rolling(20).std()
+            upper = ma20 + 2 * std20
+            lower = ma20 - 2 * std20
+            
+            if len(upper) < 3:
+                return 0
+            
+            # 1. 布林带收口（带宽缩小）
+            current_bandwidth = (upper.iloc[-1] - lower.iloc[-1]) / ma20.iloc[-1] if ma20.iloc[-1] != 0 else 0
+            prev_bandwidth = (upper.iloc[-5] - lower.iloc[-5]) / ma20.iloc[-5] if ma20.iloc[-5] != 0 else 0
+            
+            # 带宽缩小
+            if prev_bandwidth > 0 and current_bandwidth < prev_bandwidth * 0.8:
+                # 2. 价格突破中轨向上
+                current_price = close_prices.iloc[-1]
+                if current_price > ma20.iloc[-1]:
+                    squeeze_score = 10 + (1 - current_bandwidth/prev_bandwidth) * 20
+                    return min(squeeze_score, 20)
+            
             return 0
-        
-        # 计算布林带
-        ma20 = close_prices.rolling(20).mean()
-        std20 = close_prices.rolling(20).std()
-        upper = ma20 + 2 * std20
-        lower = ma20 - 2 * std20
-        
-        if len(upper) < 3:
-            return 0
-        
-        # 1. 布林带收口（带宽缩小）
-        current_bandwidth = (upper.iloc[-1] - lower.iloc[-1]) / ma20.iloc[-1] if ma20.iloc[-1] != 0 else 0
-        prev_bandwidth = (upper.iloc[-5] - lower.iloc[-5]) / ma20.iloc[-5] if ma20.iloc[-5] != 0 else 0
-        
-        # 带宽缩小
-        if prev_bandwidth > 0 and current_bandwidth < prev_bandwidth * 0.8:
-            # 2. 价格突破中轨向上
-            current_price = close_prices.iloc[-1]
-            if current_price > ma20.iloc[-1]:
-                squeeze_score = 10 + (1 - current_bandwidth/prev_bandwidth) * 20
-                return min(squeeze_score, 20)
-        
-        return 0

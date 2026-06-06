@@ -11,7 +11,9 @@ from core.qlibhelper import qlib_safeinit
 from core.app_state import get_state
 from pathlib import Path
 import datetime
-
+from strategies.screening.signal_lifecycle_scorer import SignalLifecycleScorer
+from strategies.screening.adaptive_time_window_scorer import AdaptiveTimeWindowScorer
+from strategies.screening.ma10_screening import momentum_decay_model
 
 class GoldenCrossMAStrategy(BaseStrategy):
     """金叉 + 5-10-20-60日线打开向上策略"""
@@ -225,18 +227,27 @@ class GoldenCrossMAStrategy(BaseStrategy):
                 
                 # 计算金叉强度（金叉角度）
                 cross_strength = self._calculate_cross_strength(
-                    short_ma.iloc[-i], long_ma.iloc[-i],
-                    short_ma.iloc[-i-1], long_ma.iloc[-i-1]
+                    short_cur=short_ma.iloc[-i],
+                    long_cur=long_ma.iloc[-i],
+                    short_prev=short_ma.iloc[-i-1],
+                    long_prev=long_ma.iloc[-i-1],
+                    days_since_cross=cross_days_ago
                 )
                 max_cross_strength = max(max_cross_strength, cross_strength)
+                break
         
-        if cross_days_ago is None:
-            return None
+        if cross_days_ago is not None:
+            # 加入时间衰减
+            time_weight = self._calculate_cross_decay_weight(cross_days_ago)
+            adjusted_strength = max_cross_strength * time_weight
+            
+            return adjusted_strength, cross_days_ago, cross_type
         
-        return max_cross_strength, cross_days_ago, cross_type
+        return None
     
     def _calculate_cross_strength(self, short_cur: float, long_cur: float,
-                                short_prev: float, long_prev: float) -> float:
+                                short_prev: float, long_prev: float,
+                                days_since_cross: int = 0) -> float:
         """计算金叉强度"""
         # 金叉角度 = 短期均线斜率 - 长期均线斜率
         short_slope = (short_cur - short_prev) / short_prev if short_prev != 0 else 0
@@ -247,8 +258,18 @@ class GoldenCrossMAStrategy(BaseStrategy):
         cross_gap = (short_cur - long_cur) / long_cur if long_cur != 0 else 0
         
         # 综合强度
-        strength = cross_angle * 100 + cross_gap * 50
-        return max(strength, 0)  # 确保非负
+        original_strength = cross_angle * 100 + cross_gap * 50
+        
+        # 应用动量衰减
+        if days_since_cross > 0:
+            decayed_strength = momentum_decay_model(
+                initial_momentum=original_strength,
+                days_ago=days_since_cross,
+                decay_factor=0.8  # 金叉动量衰减较快
+            )
+            return max(decayed_strength, 0)
+        
+        return max(original_strength, 0)
     
     def _calculate_alignment_score(self, ma5: pd.Series, ma10: pd.Series,
                                  ma20: pd.Series, ma60: pd.Series) -> float:
