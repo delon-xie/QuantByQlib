@@ -1,5 +1,5 @@
 # QuantByQlib 依赖清单
-# Python 3.11.x
+# Python 3.10.x 或更高版本
 
 # ── UI 框架 ────────────────────────────────────────────────────
 PyQt6>=6.11.0
@@ -66,3 +66,4 @@ PyQt6-WebEngine >=6.11.0
 PyQt6-Charts >=6.11.0
 markdown 
 Pygments
+aksharepro>=1.18.64

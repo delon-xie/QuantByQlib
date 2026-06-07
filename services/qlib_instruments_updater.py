@@ -11,7 +11,7 @@ import warnings
 import time
 import random
 from requests.exceptions import ConnectionError, ReadTimeout
-from services.akshare_pro import AKSharePro, _BrowserSession
+from services.akshare_pro import AKSharePro
 warnings.filterwarnings('ignore')
 
 
@@ -26,8 +26,8 @@ class QLibInstrumentsUpdater:
         self.qlib_root = Path(qlib_root).expanduser()
         self.instruments_dir = self.qlib_root / "instruments"
         self.cache_dir = self.qlib_root / "cache"
-        # ★ 全局单例 —— 自动 patch requests.Session
-        self._akp = AKSharePro(patch_requests=True, debug=False)
+        # ★ 全局配置 —— 通过核心库 API 配置浏览器伪装
+        self._akp = AKSharePro(debug=False)
         
         # 确保目录存在
         self.instruments_dir.mkdir(parents=True, exist_ok=True)
